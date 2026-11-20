@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#202a28" />
+    <title>Manchester Drive</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <canvas width="24" height="19" id="bee" aria-hidden="true"></canvas>
+        <h1>Manchester <em>Drive</em></h1>
+      </div>
+      <div class="room">
+        <span class="connection" id="network" role="status">Connecting</span
+        ><span id="count">0 / 8 drivers</span>
+      </div>
+    </header>
+    <main>
+      <canvas
+        id="map"
+        aria-label="Top-down driving game around Piccadilly Gardens in Manchester"
+      ></canvas>
+      <div class="location">
+        <span class="pin" aria-hidden="true"></span>
+        <div>
+          <strong>Piccadilly Gardens</strong
+          ><small><span id="street-name">Piccadilly</span> · Manchester</small>
+        </div>
+      </div>
+      <div class="north" aria-label="North is up">N<i></i></div>
+      <form id="join">
+        <div class="form-title">
+          <span class="car-icon" aria-hidden="true">▰</span>
+          <h2>Drive the gardens loop</h2>
+        </div>
+        <label for="name">Driver name</label>
+        <div class="fields">
+          <input id="name" placeholder="Driver" maxlength="16" autocomplete="nickname" /><button
+            id="start"
+            disabled
+          >
+            Drive
+          </button>
+        </div>
+      </form>
+      <section id="race-panel" aria-label="Gardens race" hidden>
+        <div class="race-heading"><strong>Gardens race</strong><span id="race-clock"></span></div>
+        <p id="race-status" role="status"></p>
+        <div id="race-results"></div>
+        <button id="dismiss-results" type="button" hidden>Close results</button>
+      </section>
+      <section id="dash" aria-label="Driver dashboard" hidden>
+        <div class="readout"><b id="speed">00</b><span>MPH</span><strong id="gear">N</strong></div>
+        <button type="button" id="race-action">Open race</button>
+        <button type="button" id="leave">Leave car</button>
+      </section>
+      <div id="notice" role="status" hidden></div>
+      <div class="touch" id="touch" hidden aria-label="Driving controls">
+        <div>
+          <button data-bit="4" aria-label="Steer left">◀</button
+          ><button data-bit="8" aria-label="Steer right">▶</button>
+        </div>
+        <div>
+          <button data-bit="2" aria-label="Brake or reverse">S</button
+          ><button data-bit="1" aria-label="Accelerate">W</button>
+        </div>
+      </div>
+    </main>
+    <footer>
+      <div class="bindings">
+        <span><kbd>W</kbd> Accelerate</span><span><kbd>S</kbd> Brake / reverse</span
+        ><span><kbd>A</kbd><kbd>D</kbd> Steer</span>
+      </div>
+      <span class="road-mark" aria-hidden="true"></span
+      ><span class="mode" id="drive-mode">Free drive</span>
+    </footer>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>
