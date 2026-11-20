@@ -12,7 +12,15 @@ import {
   spawns,
   streetObjects,
 } from './streets';
-import { boundary, clampToM60, insideM60, mapChunk, type MapChunk } from './region';
+import {
+  boundary,
+  clampToM60,
+  closestBoundaryPoint,
+  insideM60,
+  mapChunk,
+  pointInRing,
+  type MapChunk,
+} from './region';
 import type { Point } from './map-types';
 import { garden_walks as gardenWalks } from './manchester-map';
 import { checkGate, heldOnGrid, withdraw } from './race';
@@ -58,7 +66,8 @@ interface Hit {
 }
 type Cells = Map<string, (Box | Circle)[]>;
 const fixtures: Cells = new Map();
-const chunkWalls = new WeakMap<MapChunk, Cells>();
+type WaterSurface = { rings: Point[][]; minX: number; minY: number; maxX: number; maxY: number };
+const chunkWalls = new WeakMap<MapChunk, ReturnType<typeof indexChunk>>();
 const cellKey = (x: number, y: number) => x + ',' + y;
 function indexSolid(cells: Cells, solid: Box | Circle) {
   // Expand by the largest vehicle's corner radius so each mover only queries one cell.
@@ -88,22 +97,65 @@ indexRing(fixtures, boundary);
 for (const item of streetObjects) {
   indexSolid(fixtures, 'radius' in item ? item : box(item.x, item.y, 0, item.hx, item.hy));
 }
-function wallContact(body: Box) {
+function indexChunk(chunk: MapChunk) {
+  const solids: Cells = new Map(),
+    banks: Cells = new Map(),
+    water: WaterSurface[] = [];
+  for (const building of chunk.buildings)
+    for (const ring of building.rings) indexRing(solids, ring);
+  for (const tree of chunk.trees) indexSolid(solids, mapTree(tree));
+  for (const area of chunk.areas) {
+    if (area.kind !== 'water') continue;
+    const rings = [area.points, ...(area.holes ?? [])];
+    for (const ring of rings) indexRing(banks, ring);
+    const xs = area.points.map(([x]) => x),
+      ys = area.points.map(([, y]) => y);
+    water.push({
+      rings,
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys),
+    });
+  }
+  return { solids, banks, water };
+}
+function wallContact(body: Box, vehicle = false) {
   const chunk = mapChunk(body.x, body.y);
+  // Hold predicted vehicles at a chunk seam until its collision geometry arrives.
+  if (vehicle && !chunk) return { nx: 0, ny: 0 };
   const key = cellKey(Math.floor(body.x / 64), Math.floor(body.y / 64));
   let walls = chunk && chunkWalls.get(chunk);
   if (chunk && !walls) {
-    walls = new Map();
-    for (const building of chunk.buildings)
-      for (const ring of building.rings) indexRing(walls, ring);
-    for (const tree of chunk.trees) indexSolid(walls, mapTree(tree));
+    walls = indexChunk(chunk);
     chunkWalls.set(chunk, walls);
   }
-  for (const cell of [fixtures.get(key), walls?.get(key)]) {
+  for (const cell of [
+    fixtures.get(key),
+    walls?.solids.get(key),
+    vehicle ? walls?.banks.get(key) : undefined,
+  ]) {
     if (!cell) continue;
     for (const wall of cell) {
       const hit = 'radius' in wall ? roundContact(body, wall) : contact(body, wall);
       if (hit) return hit;
+    }
+  }
+  // The edge tests handle bumper and side impacts. Also reject a placement
+  // wholly within a water polygon, including ones larger than a map chunk.
+  if (vehicle && walls) {
+    for (const { rings, minX, minY, maxX, maxY } of walls.water) {
+      if (body.x < minX || body.x > maxX || body.y < minY || body.y > maxY) continue;
+      if (
+        !pointInRing(body.x, body.y, rings[0]) ||
+        rings.some((ring, i) => i > 0 && pointInRing(body.x, body.y, ring))
+      )
+        continue;
+      const bank = closestBoundaryPoint(body.x, body.y, rings);
+      const dx = body.x - bank.x,
+        dy = body.y - bank.y,
+        length = Math.hypot(dx, dy) || 1;
+      return { nx: dx / length, ny: dy / length };
     }
   }
   return null;
@@ -159,7 +211,13 @@ function contact(a: Box, b: Box) {
 function overlap(a: Box, b: Box) {
   return contact(a, b) !== null;
 }
-function obstacle(v: PersonBody, vehicles: Vehicle[], people: PersonBody[], body: Box): Hit | null {
+function obstacle(
+  v: PersonBody,
+  vehicles: Vehicle[],
+  people: PersonBody[],
+  body: Box,
+  vehicle = false,
+): Hit | null {
   if (!insideM60(v.x, v.y)) {
     const closest = clampToM60(v.x, v.y);
     const dx = v.x - closest.x,
@@ -167,7 +225,7 @@ function obstacle(v: PersonBody, vehicles: Vehicle[], people: PersonBody[], body
       d = Math.hypot(dx, dy) || 1;
     return { nx: dx / d, ny: dy / d };
   }
-  const wall = wallContact(body);
+  const wall = wallContact(body, vehicle);
   if (wall) return wall;
   for (const other of vehicles) {
     if (other.id === v.id) continue;
@@ -180,6 +238,9 @@ function obstacle(v: PersonBody, vehicles: Vehicle[], people: PersonBody[], body
     if (hit) return { ...hit, person };
   }
   return null;
+}
+function vehicleObstacle(car: Vehicle, vehicles: Vehicle[], people: PersonBody[]) {
+  return obstacle(car, vehicles, people, vehicleBox(car), true);
 }
 function velocity(car: Vehicle) {
   return {
@@ -210,7 +271,7 @@ function moveCar<T extends Vehicle>(
   people: PersonBody[],
   transferImpulse: boolean,
 ) {
-  const hit = obstacle(next, vehicles, people, vehicleBox(next));
+  const hit = vehicleObstacle(next, vehicles, people);
   if (!hit) {
     Object.assign(car, next);
     return;
@@ -240,7 +301,7 @@ function moveCar<T extends Vehicle>(
     outY = (vy - iy) * grip;
   setVelocity(car, outX, outY);
   const slide = { ...car, x: car.x + outX * dt, y: car.y + outY * dt };
-  if (!obstacle(slide, vehicles, people, vehicleBox(slide))) Object.assign(car, slide);
+  if (!vehicleObstacle(slide, vehicles, people)) Object.assign(car, slide);
 }
 
 // A walking player still owns exactly one parked vehicle. Keeping it on the player
@@ -352,8 +413,7 @@ export function findRaceGrid(world: World, racers: Racer[]) {
   for (const gap of [6, 30, 54, 78]) {
     const slots = [gap, gap + 24].map((back) => circuit.pose(gridDistance - back));
     const cars = slots.map((slot, i) => ({ ...drivers[i], ...slot }));
-    if (cars.every((car) => !obstacle(car, [...traffic, ...cars], people, vehicleBox(car))))
-      return slots;
+    if (cars.every((car) => !vehicleObstacle(car, [...traffic, ...cars], people))) return slots;
   }
   return null;
 }
@@ -380,7 +440,7 @@ export function placePlayer(
       speed: 0,
       rearLights: 'tail',
     };
-    if (!obstacle(v, vehicles, people, vehicleBox(v))) return v;
+    if (!vehicleObstacle(v, vehicles, people)) return v;
   }
   return null;
 }

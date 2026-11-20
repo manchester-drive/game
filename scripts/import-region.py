@@ -12,6 +12,7 @@ from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import nearest_points, polygonize, unary_union
 from shapely.prepared import prep
 
+from map_water import exposed_water, parts
 from map_geometry import CAR_ROADS, PATHS, HEIGHT, WIDTH, SCALE, mapped_path, road, xy
 
 CHUNK = 1440
@@ -67,16 +68,6 @@ def area_kind(t):
         return "green"
     if t.get("highway") in PATHS and t.get("area") == "yes":
         return "plaza"
-
-
-def parts(geometry, kind):
-    if geometry.is_empty:
-        return
-    if geometry.geom_type == kind:
-        yield geometry
-    elif hasattr(geometry, "geoms"):
-        for child in geometry.geoms:
-            yield from parts(child, kind)
 
 
 def as_points(coords):
@@ -169,6 +160,8 @@ def build(source):
     index = {}
     with (DEST / "region.pack").open("wb") as pack:
         for (i, j), layers in sorted(chunks.items()):
+            if "areas" in layers:
+                layers["areas"] = exposed_water(layers["areas"], layers.get("roads", []))
             chunk = gzip.compress(encoded(layers), compresslevel=9, mtime=0)
             index[f"{i},{j}"] = [pack.tell(), len(chunk)]
             pack.write(chunk)

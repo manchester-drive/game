@@ -1,4 +1,11 @@
-import { boundary, mapChunk, namedStreets, type MapChunk, type NamedStreet } from './region';
+import {
+  boundary,
+  mapChunk,
+  namedStreets,
+  pointInRing,
+  type MapChunk,
+  type NamedStreet,
+} from './region';
 import type { FurnitureKind, Point, Road, RouteLeg } from './map-types';
 import { areas, crossings, furniture, roads, routes, trees, width } from './manchester-map';
 
@@ -27,15 +34,6 @@ function namedSegments(chunk: MapChunk) {
 }
 const segmentsByChunk = new WeakMap<MapChunk, ReturnType<typeof namedSegments>>();
 const gardens = areas.find((a) => a.kind === 'gardens')!.points;
-function inGardens(x: number, y: number) {
-  let inside = false;
-  for (let i = 0, j = gardens.length - 1; i < gardens.length; j = i++) {
-    const [a, b] = gardens[i],
-      [c, d] = gardens[j];
-    if (b > y !== d > y && x < ((c - a) * (y - b)) / (d - b) + a) inside = !inside;
-  }
-  return inside;
-}
 export function streetAt(x: number, y: number) {
   const chunk = mapChunk(x, y);
   if (!chunk) return 'Loading map…';
@@ -54,7 +52,8 @@ export function streetAt(x: number, y: number) {
       nearest = s.road;
     }
   }
-  if (best > ((nearest?.width ?? 0) / 2) ** 2 && inGardens(x, y)) return 'Piccadilly Gardens';
+  if (best > ((nearest?.width ?? 0) / 2) ** 2 && pointInRing(x, y, gardens))
+    return 'Piccadilly Gardens';
   return nearest && best < 200 ** 2 ? nearest.name : 'Greater Manchester';
 }
 

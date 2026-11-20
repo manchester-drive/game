@@ -98,23 +98,41 @@ export function insideM60(x: number, y: number) {
   return inside;
 }
 
-export function clampToM60(x: number, y: number) {
-  if (insideM60(x, y)) return { x, y };
+export function pointInRing(x: number, y: number, ring: Point[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [ax, ay] = ring[i],
+      [bx, by] = ring[j];
+    if (ay > y !== by > y && x < ax + ((bx - ax) * (y - ay)) / (by - ay)) inside = !inside;
+  }
+  return inside;
+}
+
+export function closestBoundaryPoint(x: number, y: number, rings: Point[][]) {
   let nearest = { x, y },
     best = Infinity;
-  for (let i = 0; i < boundary.length; i++) {
-    const [ax, ay] = boundary[i],
-      [bx, by] = boundary[(i + 1) % boundary.length];
-    const dx = bx - ax,
-      dy = by - ay;
-    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
-    const px = ax + dx * t,
-      py = ay + dy * t,
-      distance = (px - x) ** 2 + (py - y) ** 2;
-    if (distance < best) {
-      best = distance;
-      nearest = { x: px, y: py };
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const [ax, ay] = ring[i],
+        [bx, by] = ring[(i + 1) % ring.length];
+      const dx = bx - ax,
+        dy = by - ay;
+      const t = Math.max(
+        0,
+        Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)),
+      );
+      const px = ax + dx * t,
+        py = ay + dy * t,
+        distance = (px - x) ** 2 + (py - y) ** 2;
+      if (distance < best) {
+        best = distance;
+        nearest = { x: px, y: py };
+      }
     }
   }
   return nearest;
+}
+
+export function clampToM60(x: number, y: number) {
+  return insideM60(x, y) ? { x, y } : closestBoundaryPoint(x, y, [boundary]);
 }

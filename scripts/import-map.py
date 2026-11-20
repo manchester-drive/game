@@ -4,6 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from map_water import exposed_water
 from map_geometry import CAR_ROADS, PATHS, WIDTH, HEIGHT, car_access, mapped_path, road, xy
 
 # Each leg follows the named OSM way from the preceding node to the given exit.
@@ -174,7 +175,7 @@ def convert(source):
         a, centre, b = [nodes[n] for n in refs]
         crossings.append(dict(centre=centre, signal=t.get("crossing") == "traffic_signals",
                               walk=[a, b, nodes[pavement_b], b, a, nodes[pavement_a]]))
-    return dict(width=WIDTH, height=HEIGHT, roads=roads, paths=paths, areas=areas,
+    return dict(width=WIDTH, height=HEIGHT, roads=roads, paths=paths, areas=exposed_water(areas, roads),
                 buildings=buildings, trees=trees, furniture=furniture,
                 routes=[route(GARDENS_START, GARDENS), route(DALE_START, DALE)],
                 crossings=crossings,

@@ -102,8 +102,10 @@ test('walkers and vehicles stop at trunks, street furniture and crossing lights'
   const targets = [
     { kind: 'tree', x: trees[0][0], y: trees[0][1] },
     signalPosts[0],
-    ...['bench', 'bollard', 'busStop', 'bin', 'postBox', 'planter'].map((kind) =>
-      furniture.find((f) => f.kind === kind)!,
+    // This bench has a dry approach for both the car and the walker.
+    { kind: 'bench', x: 1655, y: 3889 },
+    ...['bollard', 'busStop', 'bin', 'postBox', 'planter'].map(
+      (kind) => furniture.find((f) => f.kind === kind)!,
     ),
     // The Piccadilly fingerpost has open pavement to its west.
     { kind: 'guidepost', x: 3560, y: 2655 },

@@ -63,7 +63,7 @@ The HTTP routes validate incoming commands and pass them to the room. The room o
 
 The server advances the world at 60 simulation steps per second and broadcasts snapshots over Server-Sent Events at 15 Hz. Each browser sends sequenced control changes over HTTP, predicts its own car between snapshots and interpolates other road users. A lost heartbeat releases the controls and eventually removes the car. The shared room lasts for the lifetime of the server.
 
-Cars and walkers collide with buildings, vehicles, other players and the edge of the playable area. Tree trunks, bus stop poles, fingerposts, traffic lights, benches, fixed bollards, litter bins, pillar boxes and planters also have solid bases. You can pass under branches and behind signs. Traffic follows two connected circuits, brakes for queues and crossings, and indicates before turning. Signal timings and lane positions are game approximations. Free driving allows either direction. The race and both traffic routes follow mapped motorcar access and one-way directions.
+Cars and walkers collide with buildings, vehicles, other players and the edge of the playable area. Cars also stop at the banks of mapped water and can cross it on road bridges. Tree trunks, bus stop poles, fingerposts, traffic lights, benches, fixed bollards, litter bins, pillar boxes and planters also have solid bases. You can pass under branches and behind signs. Traffic follows two connected circuits, brakes for queues and crossings, and indicates before turning. Signal timings and lane positions are game approximations. Free driving allows either direction. The race and both traffic routes follow mapped motorcar access and one-way directions.
 
 ## Map data
 
@@ -80,15 +80,15 @@ Map data © OpenStreetMap contributors. The derived database consists of the [st
 The central XML extract was retrieved on 20 November 2026. Its importer checks that selected race and traffic route ways connect and permit travel in the chosen direction. If a mapper splits a way or changes access, review the affected legs before refreshing.
 
 ```fish
-curl --fail --location 'https://api.openstreetmap.org/api/0.6/map?bbox=-2.2463,53.4760,-2.2262,53.4865' -o /tmp/manchester-centre.osm
-python3 scripts/import-map.py /tmp/manchester-centre.osm
-```
-
-The regional archive uses the 19 November 2026 OpenStreetMap snapshot. To refresh it, download Geofabrik’s Greater Manchester PBF and run the regional importer. Python and the two import libraries are only needed for regeneration. [Geofabrik extract](https://download.geofabrik.de/europe/united-kingdom/england/greater-manchester/index.html)
-
-```fish
 python3 -m venv /tmp/manchester-map-tools
 /tmp/manchester-map-tools/bin/pip install osmium==4.3.2 shapely==2.0.7
+curl --fail --location 'https://api.openstreetmap.org/api/0.6/map?bbox=-2.2463,53.4760,-2.2262,53.4865' -o /tmp/manchester-centre.osm
+/tmp/manchester-map-tools/bin/python scripts/import-map.py /tmp/manchester-centre.osm
+```
+
+The regional archive uses the 19 November 2026 OpenStreetMap snapshot. To refresh it, download Geofabrik’s Greater Manchester PBF and run the regional importer. Both importers use the Python environment above to cut drivable road surfaces out of the water polygons. [Geofabrik extract](https://download.geofabrik.de/europe/united-kingdom/england/greater-manchester/index.html)
+
+```fish
 curl --fail --location 'https://download.geofabrik.de/europe/united-kingdom/england/greater-manchester/greater-manchester-latest.osm.pbf' -o /tmp/greater-manchester.osm.pbf
 /tmp/manchester-map-tools/bin/python scripts/import-region.py /tmp/greater-manchester.osm.pbf
 bun test
