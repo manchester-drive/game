@@ -1,7 +1,29 @@
 import { expect, test, onTestFinished } from 'bun:test';
+import type { ChatEvent } from '../src/protocol/chat';
 import type { Credentials } from '../src/protocol/commands';
 import type { World } from '../src/game/game-types';
 import { createGameServer } from '../src/server';
+
+async function readEvents<K extends 'message' | 'chat'>(url: URL, signal: AbortSignal, event: K) {
+  const res = await fetch(new URL('/events', url), { signal });
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  return async (): Promise<K extends 'chat' ? ChatEvent : World> => {
+    for (;;) {
+      while (!buffer.includes('\n\n')) {
+        const { value, done } = await reader.read();
+        if (done) throw new Error('Room stream closed');
+        buffer += value;
+      }
+      const end = buffer.indexOf('\n\n');
+      const fields = buffer.slice(0, end).split('\n');
+      buffer = buffer.slice(end + 2);
+      const type = fields.find((line) => line.startsWith('event: '))?.slice(7) ?? 'message';
+      if (type === event)
+        return JSON.parse(fields.find((line) => line.startsWith('data: '))!.slice(6));
+    }
+  };
+}
 
 test('two clients share the same authoritative cars and controls belong to their driver', async () => {
   const server = createGameServer({ hostname: '127.0.0.1', port: 0 });
@@ -20,22 +42,7 @@ test('two clients share the same authoritative cars and controls belong to their
     }),
   );
   const streams = await Promise.all(
-    [1, 2].map(async () => {
-      const res = await fetch(new URL('/events', server.url), { signal: abort.signal });
-      const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
-      let buffer = '';
-      return async () => {
-        while (!buffer.includes('\n\n')) {
-          const { value, done } = await reader.read();
-          expect(!done).toBeTruthy();
-          buffer += value;
-        }
-        const end = buffer.indexOf('\n\n'),
-          frame = buffer.slice(6, end);
-        buffer = buffer.slice(end + 2);
-        return JSON.parse(frame) as World;
-      };
-    }),
+    [1, 2].map(() => readEvents(server.url, abort.signal, 'message')),
   );
   const [initial] = await Promise.all(streams.map((read) => read()));
   const driver = (world: World, id: string) => world.players.find((p) => p.id === id)!;
@@ -122,4 +129,37 @@ test('the Bun server serves the browser bundle and validates game commands', asy
     body: JSON.stringify({ token }),
   });
   expect(leave.status).toBe(200);
+});
+
+test('global chat authenticates the sender, reaches both clients and restores history on reconnect', async () => {
+  const server = createGameServer({ hostname: '127.0.0.1', port: 0 });
+  const abort = new AbortController();
+  onTestFinished(async () => {
+    abort.abort();
+    await server.stop();
+  });
+  const post = (path: string, body: object) =>
+    fetch(new URL(path, server.url), { method: 'POST', body: JSON.stringify(body) });
+  const { token } = (await (await post('/join', { name: 'Ada' })).json()) as Credentials;
+  const streams = await Promise.all([1, 2].map(() => readEvents(server.url, abort.signal, 'chat')));
+  for (const read of streams) expect(await read()).toEqual({ type: 'history', messages: [] });
+  expect((await post('/chat', { text: 'Hello' })).status).toBe(401);
+  for (const text of ['   ', 'x'.repeat(241)]) {
+    expect((await post('/chat', { token, text })).status).toBe(400);
+  }
+  const text = '<b>Meet on Lever Street?</b>';
+  expect((await post('/chat', { token, name: 'Mo', text: '  ' + text + '  ' })).status).toBe(201);
+  const [a, b] = await Promise.all(streams.map((read) => read()));
+  expect(a).toEqual(b);
+  if (a.type !== 'message') throw new Error('Expected a live chat message');
+  expect(a.message).toEqual({
+    id: expect.any(String),
+    name: 'Ada',
+    color: expect.any(String),
+    text,
+  });
+  await post('/leave', { token });
+  expect((await post('/chat', { token, text })).status).toBe(401);
+  const reconnect = await readEvents(server.url, abort.signal, 'chat');
+  expect(await reconnect()).toEqual({ type: 'history', messages: [a.message] });
 });

@@ -2,7 +2,7 @@ import { serveMapChunk, useServerMap } from './map';
 import { mapVersion } from '../game/region';
 import page from '../client/index.html';
 import type { World } from '../game/game-types';
-import { encodeSnapshot, snapshotPath } from '../protocol/snapshots';
+import { encodeChat, encodeSnapshot, snapshotPath } from '../protocol/snapshots';
 import { GameRoom } from './room';
 import { createRoutes } from './routes';
 
@@ -14,15 +14,17 @@ export function createGameServer({
   useServerMap();
   const room = new GameRoom();
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
-  function broadcast(world: World) {
-    if (!streams.size) return;
-    const frame = encodeSnapshot(world);
+  function broadcast(frame: Uint8Array) {
     for (const stream of streams) {
       if ((stream.desiredSize ?? 0) < frame.length) {
         streams.delete(stream);
         stream.error(new Error('Client fell behind.'));
       } else stream.enqueue(frame);
     }
+  }
+
+  function publishWorld(world: World) {
+    if (streams.size) broadcast(encodeSnapshot(world));
   }
 
   const server = Bun.serve({
@@ -48,6 +50,7 @@ export function createGameServer({
               start(controller) {
                 stream = controller;
                 stream.enqueue(encodeSnapshot(room.world));
+                stream.enqueue(encodeChat({ type: 'history', messages: room.chatHistory }));
                 streams.add(stream);
               },
               cancel() {
@@ -66,13 +69,14 @@ export function createGameServer({
         },
       },
     },
-    fetch: createRoutes(room).fetch,
+    fetch: createRoutes(room, (message) => broadcast(encodeChat({ type: 'message', message })))
+      .fetch,
   });
 
   let last = performance.now();
   const timer = setInterval(() => {
     const now = performance.now();
-    room.advance((now - last) / 1000, broadcast);
+    room.advance((now - last) / 1000, publishWorld);
     last = now;
   }, 1000 / 60);
 

@@ -80,7 +80,34 @@
         </div>
       </div>
     </main>
+    <dialog id="chat-dialog" aria-labelledby="chat-title">
+      <div class="chat-heading">
+        <h2 id="chat-title">Global chat</h2>
+        <button id="chat-close" type="button">Close</button>
+      </div>
+      <div id="chat-log" role="log" aria-label="Chat messages" tabindex="0"></div>
+      <p id="chat-empty">No messages yet.</p>
+      <p id="chat-status" role="status">Join the game to send a message.</p>
+      <form id="chat-form" class="fields" hidden>
+        <input
+          id="chat-input"
+          aria-label="Message"
+          placeholder="Message everyone…"
+          autocomplete="off"
+          enterkeyhint="send"
+        />
+        <button id="chat-send" type="submit" disabled>Send</button>
+      </form>
+    </dialog>
     <footer>
+      <button
+        id="chat-toggle"
+        type="button"
+        aria-haspopup="dialog"
+        aria-controls="chat-dialog"
+        aria-keyshortcuts="T"
+        title="Global chat (T)"
+      >Chat<span id="chat-unread" hidden></span></button>
       <div class="bindings" id="driving-keys">
         <span><kbd>W</kbd> Accelerate</span><span><kbd>S</kbd> Brake / reverse</span
         ><span><kbd>A</kbd><kbd>D</kbd> Steer</span><span><kbd>E</kbd> Door</span>

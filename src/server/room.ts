@@ -1,3 +1,4 @@
+import { chatHistoryLimit, type ChatMessage } from '../protocol/chat';
 import type { Player, World } from '../game/game-types';
 import type { GarageOptions } from '../game/garage';
 import { raceCommand, withdraw } from '../game/race';
@@ -15,6 +16,7 @@ const stepSeconds = 1 / 60;
 
 export class GameRoom {
   readonly world = createWorld();
+  readonly chatHistory: ChatMessage[] = [];
   private readonly sessions = new Map<string, RoomSession>();
   private readonly inputs = new Map<string, number>();
   private accumulator = 0;
@@ -71,6 +73,14 @@ export class GameRoom {
     if (!this.acceptSequence(session, command.seq)) return 'Please try the door again.';
     this.inputs.set(session.player.id, 0);
     return useCar(this.world, session.player, command.action);
+  }
+
+  chat(session: RoomSession, text: string): ChatMessage {
+    const { name, color } = session.player;
+    const message = { id: crypto.randomUUID(), name, color, text };
+    this.chatHistory.push(message);
+    if (this.chatHistory.length > chatHistoryLimit) this.chatHistory.shift();
+    return message;
   }
 
   race(session: RoomSession, command: RaceCommand) {

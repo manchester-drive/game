@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { chatHistoryLimit } from '../src/protocol/chat';
 import { GameRoom } from '../src/server/room';
 
 test('idle controls are released, then the player and their open race leave the room', () => {
@@ -32,4 +33,16 @@ test('idle controls are released, then the player and their open race leave the 
   expect(room.sessionFor(joined.token)).toBeUndefined();
   expect(room.world.players).toHaveLength(0);
   expect(room.world.race).toBeNull();
+});
+
+test('recent chat history rolls over in send order and is local to the running room', () => {
+  const room = new GameRoom();
+  const player = room.join('Mo');
+  if ('error' in player) throw new Error(player.error);
+  const session = room.sessionFor(player.token)!;
+  const messages = Array.from({ length: chatHistoryLimit + 2 }, (_, i) =>
+    room.chat(session, String(i)),
+  );
+  expect(room.chatHistory).toEqual(messages.slice(2));
+  expect(new GameRoom().chatHistory).toEqual([]);
 });

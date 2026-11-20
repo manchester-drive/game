@@ -1,9 +1,11 @@
+import type { ChatEvent } from '../protocol/chat';
 import type { World } from '../game/game-types';
 import type { Commands, Credentials } from '../protocol/commands';
 import { decodeSnapshot, snapshotPath } from '../protocol/snapshots';
 
 type Reply<T> =
-  { ok: true; status: number; data: T } | { ok: false; status: number; error: string };
+  | { ok: true; status: number; data: T }
+  | { ok: false; status: number; error: string };
 export async function post<P extends keyof Commands>(
   path: P,
   data: Commands[P],
@@ -20,8 +22,13 @@ export async function post<P extends keyof Commands>(
   return { ok: true, status: response.status, data: await response.json() };
 }
 
-export function subscribeToWorld(onSnapshot: (world: World) => void, onDisconnect: () => void) {
+export function subscribeToRoom(
+  onSnapshot: (world: World) => void,
+  onChat: (update: ChatEvent) => void,
+  onDisconnect: () => void,
+) {
   const events = new EventSource(snapshotPath);
+  events.addEventListener('chat', (event) => onChat(JSON.parse(event.data)));
   events.onerror = onDisconnect;
   events.onmessage = (event) => onSnapshot(decodeSnapshot(event.data));
 }

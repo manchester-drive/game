@@ -5,8 +5,9 @@ import { useBrowserMap } from './map';
 import { streetAt } from '../game/streets';
 import { createWorld, drive, walk, roadUsers, JUNCTION } from '../game/world';
 import type { Credentials } from '../protocol/commands';
+import { setupChat } from './chat';
 import { el, notice, outfit, setupGarage, updateHud } from './hud';
-import { leaveOnPageHide, post, subscribeToWorld } from './network';
+import { leaveOnPageHide, post, subscribeToRoom } from './network';
 import { makeRenderer, viewport } from './renderer';
 
 useBrowserMap();
@@ -41,8 +42,10 @@ let doorBusy = false,
   raceBusy = false,
   dismissedRace: string | undefined;
 setupGarage();
+const chat = setupChat(release);
 
 function updateUI() {
+  chat.updateSession(session?.token, connected);
   updateHud({
     world: frames.at(-1)?.state,
     playerId: session?.id,
@@ -209,7 +212,18 @@ map.addEventListener('lostpointercapture', (event) => {
 });
 for (const type of ['keydown', 'keyup'] as const)
   window.addEventListener(type, (event) => {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || chat.dialog.open || event.isComposing)
+      return;
+    if (
+      event.target instanceof HTMLElement &&
+      (event.target.isContentEditable || event.target.matches('input, textarea, select'))
+    )
+      return;
+    if (event.code === 'KeyT' && type === 'keydown' && !event.repeat) {
+      event.preventDefault();
+      chat.open();
+      return;
+    }
     if (freeCam) {
       if (event.code === 'Escape' && type === 'keydown') toggleCamera();
       else if (Object.hasOwn(panDirections, event.code)) {
@@ -252,7 +266,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('.touch button
 }
 setInterval(sendInput, 900);
 
-subscribeToWorld(
+subscribeToRoom(
   (state) => {
     connected = true;
     frames.push({ state, now: performance.now() });
@@ -262,6 +276,7 @@ subscribeToWorld(
     el('count').textContent = state.players.length + ' / 8 players';
     updateUI();
   },
+  chat.receive,
   () => {
     connected = false;
     frames = [];

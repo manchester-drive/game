@@ -1,19 +1,20 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
-import { inputCommand, doorCommand, raceCommandBody } from '../protocol/commands';
+import type { ChatMessage } from '../protocol/chat';
+import { chatCommand, inputCommand, doorCommand, raceCommandBody } from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
 
 type Variables = { body: Record<string, unknown>; session: RoomSession };
 const commandBody = z.record(z.string(), z.unknown());
 
-export function createRoutes(room: GameRoom) {
+export function createRoutes(room: GameRoom, publishChat: (message: ChatMessage) => void) {
   const api = new Hono<{ Variables: Variables }>();
   api.use(async (c, next) => {
     c.header('Cache-Control', 'no-store');
     await next();
   });
-  const authenticatedCommands = ['/input', '/leave', '/race', '/vehicle'];
+  const authenticatedCommands = ['/input', '/leave', '/race', '/vehicle', '/chat'];
   api.on(
     'POST',
     ['/join', ...authenticatedCommands],
@@ -52,6 +53,13 @@ export function createRoutes(room: GameRoom) {
     if (!result.success) return c.json({ error: 'Please try the door again.' }, 409);
     const error = room.vehicle(c.var.session, result.data);
     return error ? c.json({ error }, 409) : c.json({});
+  });
+  api.post('/chat', (c) => {
+    const result = chatCommand.safeParse(c.var.body);
+    if (!result.success)
+      return c.json({ error: 'Enter a message within the character limit.' }, 400);
+    publishChat(room.chat(c.var.session, result.data.text));
+    return c.json({}, 201);
   });
   api.post('/race', (c) => {
     const result = raceCommandBody.safeParse(c.var.body);

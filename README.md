@@ -15,6 +15,8 @@ Open [the game](http://127.0.0.1:4173) in two browser windows, choose a name, ve
 
 Select **Free cam** to explore before joining, while driving or on foot. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. Spectators can explore without claiming a driver slot. If you already have a car, it coasts while the camera is detached.
 
+Select **Chat** or press **T** to open global chat. Press **Enter** to send and **Esc** to return to the game. Joined players can send messages from anywhere on the map, including on foot and in free cam. Spectators can read along. The room keeps its most recent 50 messages in memory until the server restarts.
+
 Brake lights brighten red as drivers slow down. NPCs hold them on while waiting at lights, in queues, or at a crossing. Hold **S** while moving forward to brake, then keep holding it to reverse with white rear lights.
 
 From the starting bays on Piccadilly, turn left onto Lever Street. Continue past Dale Street and Stevenson Square, then turn left onto Faraday Street. Take Spear Street to Hilton Street and return down Oldham Street to Piccadilly.
