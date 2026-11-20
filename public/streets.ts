@@ -1,16 +1,17 @@
-import { areas, crossings, furniture, height, roads, routes, trees, width } from './manchester-map.js';
+import type { FurnitureKind, Point, Road, RouteLeg } from './map-types';
+import { areas, crossings, furniture, height, roads, routes, trees, width } from './manchester-map';
 
 export const WIDTH = width,
   HEIGHT = height;
 const byId = new Map(roads.map((road) => [road.id, road]));
 
-function segment(a, b) {
+function segment(a: Point, b: Point) {
   const x = b[0] - a[0],
     y = b[1] - a[1];
   const length = Math.hypot(x, y);
   return { a, dx: x / length, dy: y / length, length };
 }
-function project(x, y, s) {
+function project(x: number, y: number, s: ReturnType<typeof segment>) {
   return Math.max(0, Math.min(s.length, (x - s.a[0]) * s.dx + (y - s.a[1]) * s.dy));
 }
 const streetSegments = roads
@@ -21,8 +22,8 @@ const streetSegments = roads
       .map((p, i) => ({ ...segment(road.points[i], p), road }))
       .filter((s) => s.length),
   );
-const gardens = areas.find((a) => a.kind === 'gardens').points;
-function inGardens(x, y) {
+const gardens = areas.find((a) => a.kind === 'gardens')!.points;
+function inGardens(x: number, y: number) {
   let inside = false;
   for (let i = 0, j = gardens.length - 1; i < gardens.length; j = i++) {
     const [a, b] = gardens[i],
@@ -31,9 +32,9 @@ function inGardens(x, y) {
   }
   return inside;
 }
-export function streetAt(x, y) {
+export function streetAt(x: number, y: number) {
   let best = Infinity,
-    nearest;
+    nearest = streetSegments[0].road;
   for (const s of streetSegments) {
     const along = project(x, y, s);
     const distance = (x - s.a[0] - along * s.dx) ** 2 + (y - s.a[1] - along * s.dy) ** 2;
@@ -48,10 +49,10 @@ export function streetAt(x, y) {
 
 // Traverse joined OSM ways in route order. Offset into the left lane of wider roads
 // and round corners inside the junction so traffic changes heading over several ticks.
-function makeCircuit(legs) {
-  const vertices = [];
+function makeCircuit(legs: RouteLeg[]) {
+  const vertices: { p: Point; road: Road }[] = [];
   for (const [id, first, last] of legs) {
-    const road = byId.get(id),
+    const road = byId.get(id)!,
       direction = Math.sign(last - first);
     for (let i = first; i !== last; i += direction) {
       const p = road.points[i],
@@ -60,9 +61,9 @@ function makeCircuit(legs) {
     }
   }
   const edges = vertices.map(({ p }, i) => segment(p, vertices[(i + 1) % vertices.length].p));
-  const lane = vertices.map(({ p, road }, i) => {
+  const lane = vertices.map(({ p, road }, i): Point => {
     const prev = (i + vertices.length - 1) % vertices.length;
-    const offset = (r) =>
+    const offset = (r: Road) =>
       r.oneway && r.width < 30 ? 0 : Math.min(9, r.width / 4, Math.max(2, r.width / 2 - 7));
     const a = edges[prev],
       b = edges[i];
@@ -71,7 +72,7 @@ function makeCircuit(legs) {
       p[1] - (a.dx * offset(vertices[prev].road) + b.dx * offset(road)) / 2,
     ];
   });
-  const points = [];
+  const points: Point[] = [];
   for (let i = 0; i < lane.length; i++) {
     const p = lane[i],
       prev = lane[(i + lane.length - 1) % lane.length],
@@ -94,8 +95,8 @@ function makeCircuit(legs) {
     length += s.length;
     return { ...s, start, end: length };
   });
-  const wrap = (d) => ((d % length) + length) % length;
-  function at(d) {
+  const wrap = (d: number) => ((d % length) + length) % length;
+  function at(d: number) {
     let lo = 0,
       hi = segments.length - 1;
     while (lo < hi) {
@@ -105,7 +106,7 @@ function makeCircuit(legs) {
     }
     return segments[lo];
   }
-  function pose(distance) {
+  function pose(distance: number) {
     const d = wrap(distance),
       s = at(d);
     const look = at(wrap(d + 24));
@@ -116,7 +117,7 @@ function makeCircuit(legs) {
       indicating: s.dx * look.dx + s.dy * look.dy < 0.97,
     };
   }
-  function nearest(x, y) {
+  function nearest(x: number, y: number) {
     let best = Infinity,
       d = 0;
     for (const s of segments) {
@@ -138,8 +139,13 @@ export const JUNCTION = circuit.pose(65);
 
 // The checkpoint centres and widths come from the carriageway. Pick mid-block
 // positions so the direction at each gate is unambiguous.
-function roadPosition(id, fraction, first = 0, last = byId.get(id).points.length - 1) {
-  const road = byId.get(id);
+function roadPosition(
+  id: number,
+  fraction: number,
+  first = 0,
+  last = byId.get(id)!.points.length - 1,
+) {
+  const road = byId.get(id)!;
   const points = road.points.slice(Math.min(first, last), Math.max(first, last) + 1);
   if (first > last) points.reverse();
   const segments = points
@@ -160,6 +166,7 @@ function roadPosition(id, fraction, first = 0, last = byId.get(id).points.length
       };
     d -= s.length;
   }
+  throw new Error('Position outside road ' + id);
 }
 export const gates = [
   [1340157207, 0.55],
@@ -168,10 +175,8 @@ export const gates = [
   [246124717, 0.5],
   [165381945, 0.47],
 ].map(([id, fraction]) => {
-  const [, first, last] = routes[0].find(([way]) => way === id);
-  return roadPosition(id, fraction, first, last);
-});
-for (const gate of gates) {
+  const [, first, last] = routes[0].find(([way]) => way === id)!;
+  const gate = roadPosition(id, fraction, first, last);
   const compass = [
     'east',
     'southeast',
@@ -182,14 +187,15 @@ for (const gate of gates) {
     'north',
     'northeast',
   ];
-  gate.direction = compass[(Math.round(Math.atan2(gate.dy, gate.dx) / (Math.PI / 4)) + 8) % 8];
-}
+  const direction = compass[(Math.round(Math.atan2(gate.dy, gate.dx) / (Math.PI / 4)) + 8) % 8];
+  return { ...gate, direction };
+});
 
-const faradayLeg = routes[0].find(([id]) => id === 171879650);
-const junction = byId.get(faradayLeg[0]).points[faradayLeg[1]];
+const faradayLeg = routes[0].find(([id]) => id === 171879650)!;
+const junction = byId.get(faradayLeg[0])!.points[faradayLeg[1]];
 export const faradayMerge = circuits.map((route) => route.nearest(...junction));
 
-export const gridDistance = circuit.nearest(gates.at(-1).x, gates.at(-1).y);
+export const gridDistance = circuit.nearest(gates.at(-1)!.x, gates.at(-1)!.y);
 export const spawns = [
   [165381945, 0.32],
   [165381945, 0.7],
@@ -219,7 +225,7 @@ export const signalPosts = crosswalks
   .filter((c) => c.signal)
   .flatMap((c) =>
     [-1, 1].map((side) => ({
-      kind: 'signal',
+      kind: 'signal' as const,
       // Stand just behind the stop line, clear of the pedestrian approach.
       x: c.x - 19 * Math.cos(c.angle) - Math.sin(c.angle) * side * (c.half + 3),
       y: c.y - 19 * Math.sin(c.angle) + Math.cos(c.angle) * side * (c.half + 3),
@@ -229,20 +235,25 @@ export const signalPosts = crosswalks
 
 // Ground footprints in world pixels, centred on the sprite's base.
 const footprints = {
-  bench: { hx: 5, hy: 2 },
-  planter: { hx: 4, hy: 3 },
-  bollard: { radius: 1.2 },
-  busStop: { radius: 1.25 },
-  guidepost: { radius: 1.25 },
-  bin: { radius: 2 },
-  postBox: { radius: 2.5 },
-};
-export const streetObjects = [
-  ...furniture.map((item) => ({ ...item, ...footprints[item.kind] })),
+  bench: { kind: 'bench', hx: 5, hy: 2 },
+  planter: { kind: 'planter', hx: 4, hy: 3 },
+  bollard: { kind: 'bollard', radius: 1.2 },
+  busStop: { kind: 'busStop', radius: 1.25 },
+  guidepost: { kind: 'guidepost', radius: 1.25 },
+  bin: { kind: 'bin', radius: 2 },
+  postBox: { kind: 'postBox', radius: 2.5 },
+} as const;
+type RectKind = 'bench' | 'planter';
+export type StreetObject = { x: number; y: number } & (
+  | { kind: RectKind; hx: number; hy: number }
+  | { kind: Exclude<FurnitureKind, RectKind> | 'tree' | 'signal'; radius: number }
+);
+export const streetObjects: StreetObject[] = [
+  ...furniture.map(({ kind, x, y }) => ({ x, y, ...footprints[kind] })),
   ...trees.map(([x, y]) => {
     const seed = (Math.imul(x + y * WIDTH, 1664525) + 1013904223) >>> 0;
     const scale = 0.75 + (seed / 4294967296) * 0.4;
-    return { kind: 'tree', x, y, radius: 2 * scale };
+    return { kind: 'tree' as const, x, y, radius: 2 * scale };
   }),
   ...signalPosts,
 ];

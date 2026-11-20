@@ -2,11 +2,20 @@
   "name": "manchester-drive",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.4",
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test"
+    "dev": "NODE_ENV=development bun --watch server.ts",
+    "start": "bun server.ts",
+    "build": "bun build --compile --production --minify server.ts --outfile dist/manchester-drive",
+    "typecheck": "bun --bun tsc --noEmit",
+    "test": "bun test"
   },
-  "engines": {
-    "node": ">=22"
+  "dependencies": {
+    "hono": "4.13.19",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
   }
 }

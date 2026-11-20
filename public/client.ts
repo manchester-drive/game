@@ -1,26 +1,37 @@
-import { gates, heldOnGrid, raceEntry } from './race.js';
-import { HEIGHT, WIDTH, streetAt } from './streets.js';
-import { drawGarage, makeRenderer, viewport } from './art.js';
-import { createWorld, drive, walk, roadUsers, JUNCTION } from './world.js';
+import type { Credentials, Player, Position, World } from './game-types';
+import type { Commands } from './protocol';
+import { gates, heldOnGrid, raceEntry } from './race';
+import { HEIGHT, WIDTH, streetAt } from './streets';
+import { drawGarage, makeRenderer, viewport } from './art';
+import { createWorld, drive, walk, roadUsers, JUNCTION } from './world';
 
-import { models, jackets, skinTones } from './garage.js';
+import { appearance, models, jackets, skinTones } from './garage';
 
-const el = (id) => document.getElementById(id);
+function el(id: 'bee' | 'map' | 'garage-preview'): HTMLCanvasElement;
+function el(id: 'model' | 'jacket' | 'skin'): HTMLSelectElement;
+function el(id: 'name'): HTMLInputElement;
+function el(id: 'camera' | 'door' | 'start' | 'race-action'): HTMLButtonElement;
+function el(id: string): HTMLElement;
+function el(id: string): HTMLElement {
+  const element = document.getElementById(id);
+  if (!element) throw new Error('Missing game element ' + id);
+  return element;
+}
 const map = el('map');
 const render = makeRenderer(map),
   initial = createWorld();
-const keyBits = { KeyW: 1, KeyS: 2, KeyA: 4, KeyD: 8 };
-let session = null,
+const keyBits: Record<string, number> = { KeyW: 1, KeyS: 2, KeyA: 4, KeyD: 8 };
+let session: Credentials | null = null,
   sequence = 0,
   keyboard = 0,
   touch = 0,
   busy = false;
-let frames = [],
-  predicted = null,
+let frames: { state: World; now: number }[] = [],
+  predicted: Player | null = null,
   connected = false;
 let freeCam = false;
-const panKeys = new Set();
-const panDirections = {
+const panKeys = new Set<string>();
+const panDirections: Record<string, [number, number]> = {
   KeyW: [0, -1],
   ArrowUp: [0, -1],
   KeyS: [0, 1],
@@ -30,10 +41,10 @@ const panDirections = {
   KeyD: [1, 0],
   ArrowRight: [1, 0],
 };
-let drag = null;
+let drag: { id: number; x: number; y: number } | null = null;
 let focus = { ...JUNCTION },
   lastDraw = performance.now();
-const bee = el('bee').getContext('2d');
+const bee = el('bee').getContext('2d')!;
 const sprite = [
   '..ww..ww.......',
   '..wWwwWw.......',
@@ -46,9 +57,15 @@ const sprite = [
   '....b..b..b....',
   '...bb..b..bb...',
 ];
+const beeColors: Record<string, string> = {
+  w: '#a3b8ac',
+  W: '#e3e8d5',
+  y: '#f5c66c',
+  b: '#6b6953',
+};
 for (let y = 0; y < sprite.length; y++)
   for (let x = 0; x < sprite[y].length; x++) {
-    const c = { w: '#a3b8ac', W: '#e3e8d5', y: '#f5c66c', b: '#6b6953' }[sprite[y][x]];
+    const c = beeColors[sprite[y][x]];
     if (c) {
       bee.fillStyle = c;
       bee.fillRect(x + 4, y + 5, 1, 1);
@@ -59,14 +76,20 @@ for (const [id, palette] of [
   ['model', models],
   ['jacket', jackets],
   ['skin', skinTones],
-]) {
+] as const) {
   for (const [key, value] of Object.entries(palette)) {
-    el(id).add(new Option(value.name ?? key[0].toUpperCase() + key.slice(1), key));
+    el(id).add(
+      new Option(typeof value === 'string' ? key[0].toUpperCase() + key.slice(1) : value.name, key),
+    );
   }
   el(id).onchange = refreshPreview;
 }
 function outfit() {
-  return { model: el('model').value, jacket: el('jacket').value, skin: el('skin').value };
+  return appearance({
+    model: el('model').value,
+    jacket: el('jacket').value,
+    skin: el('skin').value,
+  });
 }
 function refreshPreview() {
   drawGarage(el('garage-preview'), outfit());
@@ -74,17 +97,17 @@ function refreshPreview() {
 el('skin').value = 'tan';
 refreshPreview();
 
-function notice(message) {
+function notice(message: string) {
   el('notice').textContent = message;
   el('notice').hidden = !message;
 }
-const walkingButtons = {
+const walkingButtons: Record<number, [string, string]> = {
   1: ['▲', 'Walk north'],
   2: ['▼', 'Walk south'],
   4: ['◀', 'Walk west'],
   8: ['▶', 'Walk east'],
 };
-const drivingButtons = {
+const drivingButtons: Record<number, [string, string]> = {
   1: ['W', 'Accelerate'],
   2: ['S', 'Brake or reverse'],
   4: ['◀', 'Steer left'],
@@ -118,8 +141,8 @@ function updateUI() {
       ? 'Exit car & race'
       : 'Get out';
   el('door').disabled = !connected || !predicted || doorBusy;
-  for (const button of document.querySelectorAll('.touch button')) {
-    const [caption, label] = (onFoot ? walkingButtons : drivingButtons)[button.dataset.bit];
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.touch button')) {
+    const [caption, label] = (onFoot ? walkingButtons : drivingButtons)[Number(button.dataset.bit)];
     button.textContent = caption;
     button.setAttribute('aria-label', label);
   }
@@ -130,8 +153,8 @@ function updateUI() {
   updateRaceUI(frames.at(-1)?.state);
 }
 let raceBusy = false,
-  dismissedRace = null;
-function lapTime(seconds) {
+  dismissedRace: string | undefined;
+function lapTime(seconds: number) {
   const ms = Math.floor(Math.max(0, seconds) * 1000);
   return (
     Math.floor(ms / 60000) +
@@ -141,13 +164,13 @@ function lapTime(seconds) {
     String(ms % 1000).padStart(3, '0')
   );
 }
-function updateRaceUI(state) {
+function updateRaceUI(state?: World) {
   const race = state?.race,
     entry = raceEntry(race, session?.id);
   const active = entry && entry.elapsed === null && !entry.withdrawn;
   el('drive-mode').textContent = freeCam
     ? 'Free cam'
-    : active && race.phase !== 'open'
+    : active && race?.phase !== 'open'
       ? 'One-lap race'
       : predicted?.parkedCar
         ? 'On foot'
@@ -172,8 +195,8 @@ function updateRaceUI(state) {
   const visible =
     !freeCam && session && race && (entry || race.phase === 'open') && dismissedRace !== race.id;
   el('race-panel').hidden = !visible;
-  if (!visible) return;
-  let status,
+  if (!visible || !state) return;
+  let status = '',
     clock = '',
     results = '';
   if (race.phase === 'open')
@@ -182,8 +205,8 @@ function updateRaceUI(state) {
       : race.racers[0].name + ' opened a race on Piccadilly.';
   else if (race.phase === 'countdown') {
     status = 'On the grid · Get ready';
-    clock = String(Math.max(1, Math.ceil(race.startAt - state.time)));
-  } else {
+    clock = String(Math.max(1, Math.ceil(race.startAt! - state.time)));
+  } else if (entry) {
     if (race.phase === 'results') status = 'Final results';
     else if (entry.withdrawn) status = 'You left the race';
     else if (entry.elapsed !== null) status = 'Finished · Waiting for the other driver';
@@ -194,7 +217,7 @@ function updateRaceUI(state) {
           ? 'Finish'
           : 'Gate ' + (entry.next + 1) + '/' + (gates.length - 1);
       status = prefix + ' · ' + gate.street + ' (' + gate.direction + ')';
-      const elapsed = state.time - race.startAt;
+      const elapsed = state.time - race.startAt!;
       clock = elapsed < 0.8 ? 'GO!' : lapTime(elapsed);
     }
     if (entry.elapsed !== null) clock = lapTime(entry.elapsed);
@@ -219,12 +242,13 @@ el('dismiss-results').onclick = () => {
 el('race-action').onclick = async () => {
   if (!session || raceBusy) return;
   const { action, raceId } = el('race-action').dataset;
+  if (action !== 'open' && action !== 'join' && action !== 'withdraw') return;
   raceBusy = true;
   updateRaceUI(frames.at(-1)?.state);
   notice('');
   try {
     const response = await post('/race', { token: session.token, action, raceId: raceId || null });
-    if (response.status !== 200) notice(response.data.error || 'Could not update race.');
+    if (!response.ok) notice(response.error || 'Could not update race.');
   } catch {
     notice('Could not reach the race. Try again.');
   } finally {
@@ -236,16 +260,27 @@ function reset() {
   session = null;
   predicted = null;
   keyboard = touch = 0;
-  document.querySelectorAll('.touch button').forEach((b) => b.classList.remove('active'));
+  document
+    .querySelectorAll<HTMLButtonElement>('.touch button')
+    .forEach((b) => b.classList.remove('active'));
   updateUI();
 }
-async function post(path, data) {
+type Reply<T> =
+  { ok: true; status: number; data: T } | { ok: false; status: number; error: string };
+async function post<P extends keyof Commands>(
+  path: P,
+  data: Commands[P],
+): Promise<Reply<P extends '/join' ? Credentials : object>> {
   const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return { status: response.status, data: await response.json() };
+  if (!response.ok) {
+    const body = (await response.json()) as { error: string };
+    return { ok: false, status: response.status, error: body.error };
+  }
+  return { ok: true, status: response.status, data: await response.json() };
 }
 async function sendInput() {
   if (!session || doorBusy) return;
@@ -257,9 +292,9 @@ async function sendInput() {
       seq: ++sequence,
       onFoot: !!predicted?.parkedCar,
     });
-    if (result.status === 401 && session?.token === token) {
+    if (!result.ok && result.status === 401 && session?.token === token) {
       reset();
-      notice(result.data.error);
+      notice(result.error);
     }
   } catch {
     /* EventSource reports the connection state and the heartbeat retries. */
@@ -273,13 +308,13 @@ el('join').addEventListener('submit', async (event) => {
   notice('');
   try {
     const result = await post('/join', { name: el('name').value, ...outfit() });
-    if (result.status !== 201) throw new Error(result.data.error || 'Could not join.');
+    if (!result.ok) throw new Error(result.error || 'Could not join.');
     session = result.data;
     sequence = 0;
     el('name').blur();
     sendInput();
   } catch (error) {
-    notice(error.message);
+    notice(error instanceof Error ? error.message : 'Could not join.');
   } finally {
     busy = false;
     updateUI();
@@ -297,7 +332,7 @@ async function openDoor() {
       seq: ++sequence,
       action: predicted.parkedCar ? 'enter' : 'exit',
     });
-    if (result.status !== 200) notice(result.data.error || 'Could not use the car door.');
+    if (!result.ok) notice(result.error || 'Could not use the car door.');
   } catch {
     notice('Could not reach the car. Try again.');
   } finally {
@@ -327,7 +362,9 @@ function release() {
   }
   if (!keyboard && !touch) return;
   keyboard = touch = 0;
-  document.querySelectorAll('.touch button').forEach((b) => b.classList.remove('active'));
+  document
+    .querySelectorAll<HTMLButtonElement>('.touch button')
+    .forEach((b) => b.classList.remove('active'));
   sendInput();
 }
 window.addEventListener('blur', release);
@@ -369,7 +406,7 @@ map.addEventListener('pointermove', (event) => {
 map.addEventListener('lostpointercapture', (event) => {
   if (drag?.id === event.pointerId) drag = null;
 });
-for (const type of ['keydown', 'keyup'])
+for (const type of ['keydown', 'keyup'] as const)
   window.addEventListener(type, (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (freeCam) {
@@ -396,7 +433,7 @@ for (const type of ['keydown', 'keyup'])
       sendInput();
     }
   });
-for (const button of document.querySelectorAll('.touch button')) {
+for (const button of document.querySelectorAll<HTMLButtonElement>('.touch button')) {
   const bit = Number(button.dataset.bit);
   button.onpointerdown = (event) => {
     if (doorBusy) return;
@@ -422,7 +459,7 @@ events.onerror = () => {
   updateUI();
 };
 events.onmessage = (event) => {
-  const state = JSON.parse(event.data),
+  const state: World = JSON.parse(event.data),
     now = performance.now();
   connected = true;
   frames.push({ state, now });
@@ -433,7 +470,11 @@ events.onmessage = (event) => {
   updateUI();
 };
 
-function interpolate(list, before, t) {
+function interpolate<T extends Position & { id: string; angle?: number; parkedCar?: unknown }>(
+  list: T[],
+  before: T[],
+  t: number,
+): T[] {
   const prior = new Map(before.map((o) => [o.id, o]));
   return list.map((v) => {
     const p = prior.get(v.id);
@@ -443,18 +484,18 @@ function interpolate(list, before, t) {
       x: p.x + (v.x - p.x) * t,
       y: p.y + (v.y - p.y) * t,
       angle:
-        v.angle === undefined
+        v.angle === undefined || p.angle === undefined
           ? undefined
           : p.angle + Math.atan2(Math.sin(v.angle - p.angle), Math.cos(v.angle - p.angle)) * t,
     };
   });
 }
-function scene(now) {
+function scene(now: number): World {
   if (!frames.length) return initial;
   const target = now - 90;
   const end = frames.findIndex((f) => f.now >= target);
   if (end === 0) return frames[0].state;
-  if (end < 0) return frames.at(-1).state;
+  if (end < 0) return frames.at(-1)!.state;
   const a = frames[end - 1],
     b = frames[end],
     t = (target - a.now) / (b.now - a.now);
@@ -466,12 +507,12 @@ function scene(now) {
     people: interpolate(b.state.people, a.state.people, t),
   };
 }
-function draw(now) {
+function draw(now: number) {
   const dt = Math.min(0.05, (now - lastDraw) / 1000);
   lastDraw = now;
   let world = scene(now);
   if (predicted && session && connected) {
-    const latest = frames.at(-1).state;
+    const latest = frames.at(-1)!.state;
     const { vehicles, people } = roadUsers(latest);
     if (predicted.parkedCar) {
       walk(predicted, keyboard | touch, dt, vehicles, people);
@@ -485,10 +526,11 @@ function draw(now) {
       drive(predicted, keyboard | touch, dt, vehicles, people, false);
     }
     // Predict the local pose, but render the same lamp signals spectators receive.
+    const local = predicted;
     world = {
       ...world,
       players: world.players.map((p) =>
-        p.id === session.id ? { ...predicted, rearLights: p.rearLights } : p,
+        p.id === local.id ? { ...local, rearLights: p.rearLights } : p,
       ),
     };
     el('speed').textContent = String(Math.round(Math.abs(predicted.speed) * 0.45)).padStart(2, '0');

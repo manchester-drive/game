@@ -1,22 +1,23 @@
-import { gates } from './streets.js';
+import type { Player, Pose, Race, Racer, World } from './game-types';
+import { gates } from './streets';
 export { gates };
 
-function entrant(player) {
+function entrant(player: Player): Racer {
   return { id: player.id, name: player.name, next: 0, elapsed: null, withdrawn: false };
 }
-export function raceEntry(race, id) {
+export function raceEntry(race: Race | null | undefined, id: string | undefined) {
   return race?.racers.find((r) => r.id === id);
 }
-export function heldOnGrid(race, id) {
+export function heldOnGrid(race: Race | null, id: string) {
   return race?.phase === 'countdown' && !!raceEntry(race, id);
 }
-function settle(race) {
+function settle(race: Race) {
   if (race.racers.every((r) => r.elapsed !== null || r.withdrawn)) race.phase = 'results';
 }
-export function withdraw(world, id) {
+export function withdraw(world: World, id: string) {
   const race = world.race,
     entry = raceEntry(race, id);
-  if (!entry || entry.withdrawn || entry.elapsed !== null) return;
+  if (!race || !entry || entry.withdrawn || entry.elapsed !== null) return;
   if (race.phase === 'open' || race.phase === 'countdown') {
     race.racers = race.racers.filter((r) => r.id !== id);
     race.phase = 'open';
@@ -29,7 +30,13 @@ export function withdraw(world, id) {
 }
 
 // Commands arrive with the race ID shown to the driver, to reject stale clicks.
-export function raceCommand(world, player, action, raceId, findGrid) {
+export function raceCommand(
+  world: World,
+  player: Player,
+  action: 'open' | 'join' | 'withdraw',
+  raceId: string | null,
+  findGrid: (world: World, racers: Racer[]) => Pose[] | null,
+) {
   if (player.parkedCar && action !== 'withdraw') return 'Get in your car to race.';
   const race = world.race;
   if (raceId !== (race?.id ?? null)) return 'The race has changed. Try again.';
@@ -48,7 +55,7 @@ export function raceCommand(world, player, action, raceId, findGrid) {
     const grid = findGrid(world, racers);
     if (!grid) return 'Traffic is blocking the starting grid. Try again shortly.';
     for (const [i, r] of racers.entries()) {
-      const car = world.players.find((p) => p.id === r.id);
+      const car = world.players.find((p) => p.id === r.id)!;
       Object.assign(car, grid[i], {
         speed: 0,
         slideX: 0,
@@ -66,10 +73,17 @@ export function raceCommand(world, player, action, raceId, findGrid) {
   return 'That race action is no longer available.';
 }
 
-export function checkGate(race, car, fromX, fromY, tickStart, dt) {
+export function checkGate(
+  race: Race | null,
+  car: Player,
+  fromX: number,
+  fromY: number,
+  tickStart: number,
+  dt: number,
+) {
   if (race?.phase !== 'racing') return;
   const entry = raceEntry(race, car.id);
-  if (!entry || entry.withdrawn || entry.elapsed !== null) return;
+  if (!race || !entry || entry.withdrawn || entry.elapsed !== null) return;
   const g = gates[entry.next];
   const before = (fromX - g.x) * g.dx + (fromY - g.y) * g.dy;
   const after = (car.x - g.x) * g.dx + (car.y - g.y) * g.dy;
@@ -80,7 +94,7 @@ export function checkGate(race, car, fromX, fromY, tickStart, dt) {
   if (Math.abs((x - g.x) * g.dy - (y - g.y) * g.dx) > g.halfWidth) return;
   entry.next++;
   if (entry.next === gates.length) {
-    entry.elapsed = tickStart + fraction * dt - race.startAt;
+    entry.elapsed = tickStart + fraction * dt - race.startAt!;
     // Crossing time orders finishes even when two cars cross within one tick.
     race.racers.sort((a, b) => (a.elapsed ?? Infinity) - (b.elapsed ?? Infinity));
     settle(race);

@@ -21,9 +21,16 @@ export const models = {
 export const jackets = { teal: '#48b5a9', mustard: '#edba55', plum: '#ba81bd', brick: '#d96c58' };
 export const skinTones = { light: '#edc2a1', tan: '#c48b63', brown: '#935e42', deep: '#684231' };
 
-export function appearance(options = {}) {
-  function choice(palette, key, fallback) {
-    return typeof key === 'string' && Object.hasOwn(palette, key) ? key : fallback;
+export interface Appearance {
+  model: keyof typeof models;
+  jacket: keyof typeof jackets;
+  skin: keyof typeof skinTones;
+}
+export type GarageOptions = Partial<Record<keyof Appearance, unknown>>;
+
+export function appearance(options: GarageOptions = {}): Appearance {
+  function choice<T extends object>(palette: T, key: unknown, fallback: keyof T): keyof T {
+    return typeof key === 'string' && Object.hasOwn(palette, key) ? (key as keyof T) : fallback;
   }
   return {
     model: choice(models, options.model, 'hatch'),

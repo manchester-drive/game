@@ -1,6 +1,14 @@
-FROM node:24-bookworm-slim
+FROM oven/bun:1.4.4 AS build
 WORKDIR /app
-COPY package.json server.js ./
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY server.ts tsconfig.json ./
 COPY public/ ./public/
-USER node
-CMD ["node", "server.js"]
+RUN bun run build
+
+FROM debian:bookworm-slim
+COPY --from=build /app/dist/manchester-drive /usr/local/bin/manchester-drive
+ENV HOST=0.0.0.0
+EXPOSE 4173
+USER 65532:65532
+CMD ["manchester-drive"]

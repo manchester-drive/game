@@ -1,3 +1,6 @@
+import type { Player, Position, Racer, TrafficCar, Vehicle, World } from './game-types';
+import type { GarageOptions } from './garage';
+
 // World coordinates are pixels, heading is measured clockwise from east.
 import {
   WIDTH,
@@ -9,11 +12,11 @@ import {
   gridDistance,
   spawns,
   streetObjects,
-} from './streets.js';
-import { buildings, garden_walks as gardenWalks } from './manchester-map.js';
-import { checkGate, heldOnGrid, withdraw } from './race.js';
-import { appearance, models } from './garage.js';
-export { WIDTH, HEIGHT, JUNCTION, signalPosts } from './streets.js';
+} from './streets';
+import { buildings, garden_walks as gardenWalks } from './manchester-map';
+import { checkGate, heldOnGrid, withdraw } from './race';
+import { appearance, models } from './garage';
+export { WIDTH, HEIGHT, JUNCTION, signalPosts } from './streets';
 export const COLORS = [
   '#51ccc2',
   '#f2ba52',
@@ -24,35 +27,45 @@ export const COLORS = [
   '#ddd8be',
   '#e596b3',
 ];
-export function signals(time) {
+export function signals(time: number) {
   const t = time % 24;
   const horizontal = t < 7 ? 'green' : t < 9 ? 'amber' : 'red';
   const vertical = t >= 10 && t < 17 ? 'green' : t >= 17 && t < 19 ? 'amber' : 'red';
   return { horizontal, vertical, walk: t >= 20 && t < 20.8 };
 }
 
-function box(x, y, angle, hx, hy) {
+function box(x: number, y: number, angle: number, hx: number, hy: number) {
   return { x, y, ux: Math.cos(angle), uy: Math.sin(angle), hx, hy };
 }
-function vehicleBox(v) {
+function vehicleBox(v: Vehicle) {
   const model = models[v.model ?? 'hatch'];
   return box(v.x, v.y, v.angle, model.length, model.width);
 }
-function personBox(p) {
+function personBox(p: Position) {
   return box(p.x, p.y, 0, 2.2, 2.2);
 }
 // Index building edges and street objects once for both prediction and the server.
-const cells = new Map();
-const cellKey = (x, y) => x + ',' + y;
-function indexSolid(solid) {
+type Box = ReturnType<typeof box>;
+type Circle = Position & { radius: number };
+type PersonBody = Position & { id?: string };
+type Walker = PersonBody & { angle?: number; speed?: number };
+interface Hit {
+  nx: number;
+  ny: number;
+  other?: Vehicle;
+  person?: PersonBody;
+}
+const cells = new Map<string, (Box | Circle)[]>();
+const cellKey = (x: number, y: number) => x + ',' + y;
+function indexSolid(solid: Box | Circle) {
   // Expand by the largest vehicle's corner radius so each mover only queries one cell.
-  const rx = (solid.radius ?? radius(solid, 1, 0)) + 13,
-    ry = (solid.radius ?? radius(solid, 0, 1)) + 13;
+  const rx = ('radius' in solid ? solid.radius : radius(solid, 1, 0)) + 13,
+    ry = ('radius' in solid ? solid.radius : radius(solid, 0, 1)) + 13;
   for (let cx = Math.floor((solid.x - rx) / 64); cx <= (solid.x + rx) / 64; cx++) {
     for (let cy = Math.floor((solid.y - ry) / 64); cy <= (solid.y + ry) / 64; cy++) {
       const key = cellKey(cx, cy);
       if (!cells.has(key)) cells.set(key, []);
-      cells.get(key).push(solid);
+      cells.get(key)!.push(solid);
     }
   }
 }
@@ -68,19 +81,20 @@ for (const { rings } of buildings) {
   }
 }
 for (const item of streetObjects) {
-  indexSolid(item.radius ? item : box(item.x, item.y, 0, item.hx, item.hy));
+  indexSolid('radius' in item ? item : box(item.x, item.y, 0, item.hx, item.hy));
 }
-function wallContact(body) {
+function wallContact(body: Box) {
   const walls = cells.get(cellKey(Math.floor(body.x / 64), Math.floor(body.y / 64))) ?? [];
   for (const wall of walls) {
-    const hit = wall.radius ? roundContact(body, wall) : contact(body, wall);
+    const hit = 'radius' in wall ? roundContact(body, wall) : contact(body, wall);
     if (hit) return hit;
   }
   return null;
 }
-function roundContact(body, post) {
+function roundContact(body: Box, post: Circle) {
   // Closest point on the moving box, in its own forward/sideways coordinates.
-  const dx = post.x - body.x, dy = post.y - body.y;
+  const dx = post.x - body.x,
+    dy = post.y - body.y;
   const forward = dx * body.ux + dy * body.uy;
   const side = -dx * body.uy + dy * body.ux;
   let nx = forward - Math.max(-body.hx, Math.min(body.hx, forward));
@@ -97,11 +111,11 @@ function roundContact(body, post) {
   }
   return { nx: nx * body.ux - ny * body.uy, ny: nx * body.uy + ny * body.ux };
 }
-function radius(b, x, y) {
+function radius(b: Box, x: number, y: number) {
   return Math.abs(x * b.ux + y * b.uy) * b.hx + Math.abs(y * b.ux - x * b.uy) * b.hy;
 }
 // The shallowest separating axis gives the direction of a contact impulse.
-function contact(a, b) {
+function contact(a: Box, b: Box) {
   const dx = b.x - a.x,
     dy = b.y - a.y;
   let minimum = Infinity,
@@ -125,10 +139,10 @@ function contact(a, b) {
   }
   return { nx, ny };
 }
-function overlap(a, b) {
+function overlap(a: Box, b: Box) {
   return contact(a, b) !== null;
 }
-function obstacle(v, vehicles, people, body = vehicleBox(v)) {
+function obstacle(v: PersonBody, vehicles: Vehicle[], people: PersonBody[], body: Box): Hit | null {
   const rx = radius(body, 1, 0),
     ry = radius(body, 0, 1);
   if (v.x < rx) return { nx: -1, ny: 0 };
@@ -149,36 +163,43 @@ function obstacle(v, vehicles, people, body = vehicleBox(v)) {
   }
   return null;
 }
-function velocity(car) {
+function velocity(car: Vehicle) {
   return {
     x: car.speed * Math.cos(car.angle) + (car.slideX || 0),
     y: car.speed * Math.sin(car.angle) + (car.slideY || 0),
   };
 }
-function setVelocity(car, x, y) {
+function setVelocity(car: Vehicle, x: number, y: number) {
   // Tyres regain grip after a sideways hit. NPC route control resumes after the shove.
   const ux = Math.cos(car.angle),
     uy = Math.sin(car.angle);
-  car.speed = car.lane === undefined ? x * ux + y * uy : 0;
+  car.speed = !('lane' in car) ? x * ux + y * uy : 0;
   car.slideX = x - car.speed * ux;
   car.slideY = y - car.speed * uy;
 }
-function dampSlide(car, dt) {
+function dampSlide(car: Vehicle, dt: number) {
   if (!car.slideX && !car.slideY) return;
   const grip = Math.exp(-3.2 * dt);
-  car.slideX *= grip;
-  car.slideY *= grip;
+  car.slideX = (car.slideX ?? 0) * grip;
+  car.slideY = (car.slideY ?? 0) * grip;
   if (Math.hypot(car.slideX, car.slideY) < 0.08) car.slideX = car.slideY = 0;
 }
-function moveCar(car, next, dt, vehicles, people, transferImpulse) {
-  const hit = obstacle(next, vehicles, people);
+function moveCar<T extends Vehicle>(
+  car: T,
+  next: T,
+  dt: number,
+  vehicles: Vehicle[],
+  people: PersonBody[],
+  transferImpulse: boolean,
+) {
+  const hit = obstacle(next, vehicles, people, vehicleBox(next));
   if (!hit) {
     Object.assign(car, next);
     return;
   }
   if (hit.person) {
     setVelocity(car, 0, 0);
-    if (car.lane !== undefined) car.rearLights = 'brake';
+    if ('lane' in car) car.rearLights = 'brake';
     return;
   }
 
@@ -201,19 +222,25 @@ function moveCar(car, next, dt, vehicles, people, transferImpulse) {
     outY = (vy - iy) * grip;
   setVelocity(car, outX, outY);
   const slide = { ...car, x: car.x + outX * dt, y: car.y + outY * dt };
-  if (!obstacle(slide, vehicles, people)) Object.assign(car, slide);
+  if (!obstacle(slide, vehicles, people, vehicleBox(slide))) Object.assign(car, slide);
 }
 
 // A walking player still owns exactly one parked vehicle. Keeping it on the player
 // also removes both from the room together on leave or disconnect.
-export function roadUsers(world) {
+export function roadUsers(world: World) {
   return {
     vehicles: [...world.traffic, ...world.players.map((p) => p.parkedCar ?? p)],
     people: [...world.people, ...world.players.filter((p) => p.parkedCar)],
   };
 }
 
-export function walk(player, keys, dt, vehicles, people) {
+export function walk(
+  player: Walker,
+  keys: number,
+  dt: number,
+  vehicles: Vehicle[],
+  people: PersonBody[],
+) {
   if (dt <= 0) return;
   const dx = Number(!!(keys & 8)) - Number(!!(keys & 4));
   const dy = Number(!!(keys & 2)) - Number(!!(keys & 1));
@@ -237,7 +264,7 @@ export function walk(player, keys, dt, vehicles, people) {
   player.speed = Math.hypot(player.x - oldX, player.y - oldY) / dt;
 }
 
-export function useCar(world, player, action) {
+export function useCar(world: World, player: Player, action: 'enter' | 'exit') {
   const parked = player.parkedCar;
   if (action !== (parked ? 'enter' : 'exit')) return 'Your position has changed.';
   if (
@@ -300,23 +327,30 @@ export function useCar(world, player, action) {
     ? 'Walk up beside your parked car.'
     : 'Both doors are blocked. Move the car and try again.';
 }
-export function findRaceGrid(world, racers) {
+export function findRaceGrid(world: World, racers: Racer[]) {
   const { vehicles, people } = roadUsers(world);
   const traffic = vehicles.filter((v) => !racers.some((r) => r.id === v.id));
-  const drivers = racers.map((r) => world.players.find((p) => p.id === r.id));
+  const drivers = racers.map((r) => world.players.find((p) => p.id === r.id)!);
   for (const gap of [6, 30, 54, 78]) {
     const slots = [gap, gap + 24].map((back) => circuit.pose(gridDistance - back));
     const cars = slots.map((slot, i) => ({ ...drivers[i], ...slot }));
-    if (cars.every((car) => !obstacle(car, [...traffic, ...cars], people))) return slots;
+    if (cars.every((car) => !obstacle(car, [...traffic, ...cars], people, vehicleBox(car))))
+      return slots;
   }
   return null;
 }
 
-export function placePlayer(id, name, color, world, options) {
+export function placePlayer(
+  id: string,
+  name: string,
+  color: string,
+  world: World,
+  options?: GarageOptions,
+): Player | null {
   const { vehicles, people } = roadUsers(world);
   const style = appearance(options);
   for (const [x, y, angle] of spawns) {
-    const v = {
+    const v: Player = {
       id,
       name,
       color,
@@ -328,12 +362,19 @@ export function placePlayer(id, name, color, world, options) {
       speed: 0,
       rearLights: 'tail',
     };
-    if (!obstacle(v, vehicles, people)) return v;
+    if (!obstacle(v, vehicles, people, vehicleBox(v))) return v;
   }
   return null;
 }
 
-export function drive(car, keys, dt, vehicles, people, transferImpulse = true) {
+export function drive(
+  car: Vehicle,
+  keys: number,
+  dt: number,
+  vehicles: Vehicle[],
+  people: PersonBody[],
+  transferImpulse = true,
+) {
   if (dt <= 0) return car;
   const model = models[car.model ?? 'hatch'];
   dampSlide(car, dt);
@@ -371,7 +412,7 @@ export function drive(car, keys, dt, vehicles, people, transferImpulse = true) {
 const standstillGap = 12,
   headway = 0.65,
   trafficBraking = 64;
-function followTraffic(car, vehicles, limit) {
+function followTraffic(car: TrafficCar, vehicles: (Vehicle | TrafficCar)[], limit: number) {
   const body = vehicleBox(car);
   let travel = Infinity;
   for (const leader of vehicles) {
@@ -381,7 +422,7 @@ function followTraffic(car, vehicles, limit) {
       dy = leader.y - car.y;
     if (Math.abs(dx) > 110 || Math.abs(dy) > 110) continue;
     let ahead = dx * body.ux + dy * body.uy;
-    const sameRoute = car.lane === leader.lane;
+    const sameRoute = 'lane' in leader && car.lane === leader.lane;
     if (sameRoute) {
       ahead = circuits[car.lane].wrap(leader.d - car.d);
       if (ahead > 110) continue;
@@ -392,7 +433,7 @@ function followTraffic(car, vehicles, limit) {
       )
         continue;
       // Cross traffic follows junction priority; it is not a leader in this lane.
-      if (leader.lane !== undefined && body.ux * other.ux + body.uy * other.uy < 0.7) continue;
+      if ('lane' in leader && body.ux * other.ux + body.uy * other.uy < 0.7) continue;
     }
     const leaderLength = sameRoute ? other.hx : radius(other, body.ux, body.uy);
     const free = Math.max(0, ahead - body.hx - leaderLength - standstillGap);
@@ -420,7 +461,7 @@ const stops = circuits.map((route) =>
     return [{ d: d - 16, index }];
   }),
 );
-export function createWorld() {
+export function createWorld(): World {
   const traffic = circuits.flatMap((route, lane) => {
     const count = lane === 0 ? 8 : 3;
     return Array.from({ length: count }, (_, i) => {
@@ -431,7 +472,7 @@ export function createWorld() {
         d,
         ...route.pose(d),
         speed: 0,
-        rearLights: 'tail',
+        rearLights: 'tail' as const,
         color: COLORS[(i + lane) % COLORS.length],
       };
     });
@@ -448,10 +489,10 @@ export function createWorld() {
   return { time: 0, players: [], traffic, people, race: null };
 }
 
-export function step(world, inputs, dt) {
+export function step(world: World, inputs: ReadonlyMap<string, number>, dt: number) {
   const tickStart = world.time;
   world.time += dt;
-  if (world.race?.phase === 'countdown' && tickStart >= world.race.startAt)
+  if (world.race?.phase === 'countdown' && tickStart >= world.race.startAt!)
     world.race.phase = 'racing';
   const lights = signals(world.time),
     { vehicles, people } = roadUsers(world);

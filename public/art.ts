@@ -1,30 +1,51 @@
-import { gates, raceEntry } from './race.js';
-import { circuit, crosswalks, streetObjects, WIDTH, HEIGHT } from './streets.js';
-import { buildings, roads, paths, areas } from './manchester-map.js';
-import { jackets, models, skinTones } from './garage.js';
-import { signals } from './world.js';
+import type { MapData, Point } from './map-types';
+import type { Appearance } from './garage';
+import type { Player, Pedestrian, Pose, Position, Vehicle, World } from './game-types';
+import type { StreetObject } from './streets';
+import { gates, raceEntry } from './race';
+import { circuit, crosswalks, streetObjects, WIDTH, HEIGHT } from './streets';
+import { buildings, roads, paths, areas } from './manchester-map';
+import { jackets, models, skinTones } from './garage';
+import { signals } from './world';
 
-function rect(g, x, y, w, h, color) {
+type Context = CanvasRenderingContext2D;
+type Label = Pose & { name: string; oneway: number };
+type Tile = Pick<MapData, 'roads' | 'paths' | 'areas' | 'buildings'> & {
+  crosswalks: typeof crosswalks;
+  labels: Label[];
+};
+type CarSprite = Omit<Vehicle, 'id' | 'speed'>;
+type CharacterSprite = Pick<Player, 'x' | 'y' | 'angle' | 'speed' | 'jacket' | 'skin'>;
+
+function rect(g: Context, x: number, y: number, w: number, h: number, color: string) {
   g.fillStyle = color;
   g.fillRect(Math.round(x), Math.round(y), w, h);
 }
-function label(g, str, x, y, size, ink, align = 'center') {
+function label(
+  g: Context,
+  str: string,
+  x: number,
+  y: number,
+  size: number,
+  ink: string,
+  align: CanvasTextAlign = 'center',
+) {
   g.font = 'bold ' + size + 'px monospace';
   g.textAlign = align;
   g.fillStyle = ink;
   g.fillText(str, Math.round(x), Math.round(y));
 }
-function random(seed) {
+function random(seed: number) {
   return () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed / 4294967296;
   };
 }
-function tree(g, x, y, scale) {
+function tree(g: Context, x: number, y: number, scale: number) {
   g.save();
   g.translate(x, y - 11 * scale);
   g.scale(scale, scale);
-  const R = (x, y, w, h, c) => rect(g, x, y, w, h, c);
+  const R = (x: number, y: number, w: number, h: number, c: string) => rect(g, x, y, w, h, c);
   R(-6, 5, 19, 8, '#68735b');
   R(-2, 1, 4, 12, '#504b39');
   R(0, 2, 2, 9, '#876a47');
@@ -40,7 +61,7 @@ function tree(g, x, y, scale) {
   R(4, 0, 4, 3, '#426648');
   g.restore();
 }
-function drawStreetObject(g, item, signal) {
+function drawStreetObject(g: Context, item: StreetObject, signal: string) {
   const { kind, x, y } = item;
   switch (kind) {
     case 'tree':
@@ -90,19 +111,19 @@ function drawStreetObject(g, item, signal) {
       break;
   }
 }
-function outline(g, points, closed = false) {
+function outline(g: Context, points: Point[], closed = false) {
   g.moveTo(...points[0]);
   for (let i = 1; i < points.length; i++) g.lineTo(...points[i]);
   if (closed) g.closePath();
 }
-function line(g, points, width, ink) {
+function line(g: Context, points: Point[], width: number, ink: string) {
   g.beginPath();
   outline(g, points);
   g.strokeStyle = ink;
   g.lineWidth = width;
   g.stroke();
 }
-function footprint(g, building, rng) {
+function footprint(g: Context, building: MapData['buildings'][number], rng: () => number) {
   const { rings, name } = building;
   g.beginPath();
   for (const ring of rings) outline(g, ring, true);
@@ -189,10 +210,10 @@ function footprint(g, building, rng) {
 
 function streetLabels() {
   // Place street names on their longest segment, with room between labels.
-  const labels = [];
+  const labels: Label[] = [];
   for (const road of roads.filter((r) => r.name)) {
     let longest = 0,
-      anchor;
+      anchor: Pose | undefined;
     for (let i = 1; i < road.points.length; i++) {
       const [x, y] = road.points[i - 1],
         [ex, ey] = road.points[i];
@@ -202,7 +223,7 @@ function streetLabels() {
         anchor = { x: (x + ex) / 2, y: (y + ey) / 2, angle: Math.atan2(ey - y, ex - x) };
       }
     }
-    if (longest < road.name.length * 4 + 12) continue;
+    if (!anchor || longest < road.name.length * 4 + 12) continue;
     if (
       labels.some(
         (p) => Math.hypot(anchor.x - p.x, anchor.y - p.y) < (p.name === road.name ? 200 : 65),
@@ -215,11 +236,11 @@ function streetLabels() {
 }
 
 const tileSize = 720;
-function terrainTile(left, top, tile) {
+function terrainTile(left: number, top: number, tile: Tile) {
   const canvas = document.createElement('canvas');
   canvas.width = Math.min(tileSize, WIDTH - left);
   canvas.height = Math.min(tileSize, HEIGHT - top);
-  const g = canvas.getContext('2d', { alpha: false }),
+  const g = canvas.getContext('2d', { alpha: false })!,
     rng = random(418 + left + top * WIDTH);
   g.translate(-left, -top);
   rect(g, left, top, canvas.width, canvas.height, '#bfb39e');
@@ -234,7 +255,12 @@ function terrainTile(left, top, tile) {
         (Math.imul(x + 1, 73856093) ^ Math.imul(y + 1, 19349663)) & 256 ? '#c3b7a2' : '#bbae99',
       );
   }
-  const fills = { gardens: '#96a181', green: '#82966f', plaza: '#cbbdab', water: '#789a9c' };
+  const fills: Record<string, string> = {
+    gardens: '#96a181',
+    green: '#82966f',
+    plaza: '#cbbdab',
+    water: '#789a9c',
+  };
   for (const kind of Object.keys(fills)) {
     for (const area of tile.areas.filter((a) => a.kind === kind)) {
       g.beginPath();
@@ -272,7 +298,7 @@ function terrainTile(left, top, tile) {
     [5, '#a89983'],
     [3, '#e2d3b7'],
     [0, '#595e60'],
-  ]) {
+  ] as const) {
     for (const r of tile.roads) {
       const restricted = r.access === 'no' || r.access === 'private';
       line(g, r.points, r.width + extra, extra === 0 && restricted ? '#786b64' : ink);
@@ -346,14 +372,14 @@ function terrainTile(left, top, tile) {
 
 // Render the visible part of the city at full pixel-art resolution. A footprint
 // or label straddling a tile edge is drawn in both tiles in world coordinates.
-const gardenPoints = areas.find((area) => area.kind === 'gardens').points;
+const gardenPoints = areas.find((area) => area.kind === 'gardens')!.points;
 const gardenLabel = {
   x: gardenPoints.reduce((sum, p) => sum + p[0], 0) / gardenPoints.length,
   y: gardenPoints.reduce((sum, p) => sum + p[1], 0) / gardenPoints.length,
 };
 function makeTerrain() {
   const columns = Math.ceil(WIDTH / tileSize);
-  const tiles = Array.from({ length: columns * Math.ceil(HEIGHT / tileSize) }, () => ({
+  const tiles: Tile[] = Array.from({ length: columns * Math.ceil(HEIGHT / tileSize) }, () => ({
     areas: [],
     roads: [],
     paths: [],
@@ -361,7 +387,7 @@ function makeTerrain() {
     crosswalks: [],
     labels: [],
   }));
-  function index(layer, feature, points, padding) {
+  function index<T>(layer: (tile: Tile) => T[], feature: T, points: Point[], padding: number) {
     const xs = points.map((p) => p[0]),
       ys = points.map((p) => p[1]);
     const x0 = Math.max(0, Math.floor((Math.min(...xs) - padding) / tileSize));
@@ -372,16 +398,17 @@ function makeTerrain() {
       Math.floor((Math.max(...ys) + padding) / tileSize),
     );
     for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) tiles[y * columns + x][layer].push(feature);
+      for (let x = x0; x <= x1; x++) layer(tiles[y * columns + x]).push(feature);
   }
-  for (const r of roads) index('roads', r, r.points, r.width / 2 + 4);
-  for (const p of paths) index('paths', p, p.points, 8);
-  for (const a of areas) index('areas', a, a.points, 1);
-  for (const b of buildings) index('buildings', b, b.rings.flat(), 3);
-  for (const c of crosswalks) index('crosswalks', c, [[c.x, c.y]], c.half + 20);
-  for (const l of streetLabels()) index('labels', l, [[l.x, l.y]], l.name.length * 3 + 12);
-  const cache = new Map();
-  return (g, left, top, width, height) => {
+  for (const r of roads) index((tile) => tile.roads, r, r.points, r.width / 2 + 4);
+  for (const p of paths) index((tile) => tile.paths, p, p.points, 8);
+  for (const a of areas) index((tile) => tile.areas, a, a.points, 1);
+  for (const b of buildings) index((tile) => tile.buildings, b, b.rings.flat(), 3);
+  for (const c of crosswalks) index((tile) => tile.crosswalks, c, [[c.x, c.y]], c.half + 20);
+  for (const l of streetLabels())
+    index((tile) => tile.labels, l, [[l.x, l.y]], l.name.length * 3 + 12);
+  const cache = new Map<number, HTMLCanvasElement>();
+  return (g: Context, left: number, top: number, width: number, height: number) => {
     const x0 = Math.floor(left / tileSize),
       x1 = Math.floor((left + width - 1) / tileSize);
     const y0 = Math.floor(top / tileSize),
@@ -396,20 +423,20 @@ function makeTerrain() {
       }
     const limit = Math.max(12, (x1 - x0 + 1) * (y1 - y0 + 1));
     while (cache.size > limit) {
-      const key = cache.keys().next().value;
-      cache.get(key).width = 0;
+      const key = cache.keys().next().value!;
+      cache.get(key)!.width = 0;
       cache.delete(key);
     }
   };
 }
 
-function car(g, v, local, time) {
+function car(g: Context, v: CarSprite, local: boolean, time: number) {
   g.save();
   g.translate(Math.round(v.x), Math.round(v.y));
   g.rotate(v.angle);
   const model = models[v.model ?? 'hatch'];
   g.scale(model.length / 9.5, model.width / 4.8);
-  const R = (x, y, w, h, c) => rect(g, x, y, w, h, c);
+  const R = (x: number, y: number, w: number, h: number, c: string) => rect(g, x, y, w, h, c);
   R(-8, -4, 19, 11, '#2b333272');
   R(-8, -5, 16, 10, '#2c3736');
   R(-6, -6, 4, 2, '#293432');
@@ -457,7 +484,7 @@ function car(g, v, local, time) {
   }
   g.restore();
 }
-function character(g, player, time) {
+function character(g: Context, player: CharacterSprite, time: number) {
   g.save();
   g.translate(Math.round(player.x), Math.round(player.y));
   g.rotate(player.angle);
@@ -471,7 +498,7 @@ function character(g, player, time) {
   rect(g, -1, -2, 3, 4, '#453b35');
   g.restore();
 }
-function pedestrian(g, p) {
+function pedestrian(g: Context, p: Pedestrian) {
   const stride = Math.floor((p.x + p.y) / 3) % 2;
   rect(g, p.x - 2, p.y + 2, 6, 2, '#727468');
   rect(g, p.x - 2, p.y, 1, 3 - stride, '#3e4743');
@@ -480,8 +507,8 @@ function pedestrian(g, p) {
   rect(g, p.x - 1, p.y - 5, 3, 3, '#b88b68');
   rect(g, p.x - 1, p.y - 6, 3, 2, '#55483e');
 }
-export function drawGarage(canvas, style) {
-  const g = canvas.getContext('2d');
+export function drawGarage(canvas: HTMLCanvasElement, style: Appearance) {
+  const g = canvas.getContext('2d')!;
   g.clearRect(0, 0, canvas.width, canvas.height);
   g.save();
   g.scale(3, 3);
@@ -490,7 +517,14 @@ export function drawGarage(canvas, style) {
   g.restore();
 }
 
-function drawGate(g, gate, viewX, viewY, width, height) {
+function drawGate(
+  g: Context,
+  gate: (typeof gates)[number],
+  viewX: number,
+  viewY: number,
+  width: number,
+  height: number,
+) {
   g.save();
   g.translate(gate.x, gate.y);
   g.rotate(Math.atan2(gate.dy, gate.dx));
@@ -521,7 +555,7 @@ function drawGate(g, gate, viewX, viewY, width, height) {
   for (let i = 0; i < 4; i++) rect(g, i, -4 + i, 1, 9 - 2 * i, '#ffcc65');
   g.restore();
 }
-function light(g, x, y, state) {
+function light(g: Context, x: number, y: number, state: string) {
   rect(g, x + 1, y + 1, 3, 13, '#666c60');
   rect(g, x, y - 1, 2, 14, '#3e4841');
   rect(g, x - 2, y - 6, 6, 12, '#313a36');
@@ -529,11 +563,11 @@ function light(g, x, y, state) {
     [0, 'red', '#f07b66'],
     [1, 'amber', '#f2c56a'],
     [2, 'green', '#83d4a3'],
-  ])
+  ] as const)
     rect(g, x, y - 4 + i * 3, 2, 2, state === s ? c : '#575b4f');
 }
 
-export function viewport(canvas) {
+export function viewport(canvas: HTMLCanvasElement) {
   const zoom = Math.max(1.7, canvas.clientWidth / WIDTH, canvas.clientHeight / HEIGHT);
   return {
     width: Math.min(WIDTH, Math.ceil(canvas.clientWidth / zoom)),
@@ -541,12 +575,12 @@ export function viewport(canvas) {
   };
 }
 
-export function makeRenderer(canvas) {
+export function makeRenderer(canvas: HTMLCanvasElement) {
   const paintTerrain = makeTerrain(),
-    g = canvas.getContext('2d', { alpha: false });
+    g = canvas.getContext('2d', { alpha: false })!;
   const buffer = document.createElement('canvas'),
-    b = buffer.getContext('2d', { alpha: false });
-  return (world, me, focus) => {
+    b = buffer.getContext('2d', { alpha: false })!;
+  return (world: World, me: string | undefined, focus: Position) => {
     const w = canvas.clientWidth,
       h = canvas.clientHeight,
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -565,7 +599,7 @@ export function makeRenderer(canvas) {
     b.setTransform(1, 0, 0, 1, -x, -y);
     paintTerrain(b, x, y, vw, vh);
     const entry = raceEntry(world.race, me);
-    if (entry && !entry.withdrawn && entry.elapsed === null && world.race.phase !== 'open') {
+    if (entry && !entry.withdrawn && entry.elapsed === null && world.race?.phase !== 'open') {
       b.save();
       b.setLineDash([5, 12]);
       line(b, [...circuit.points, circuit.points[0]], 1.5, '#efc66b');
@@ -574,8 +608,9 @@ export function makeRenderer(canvas) {
     }
     // Draw by ground position so people and cars can pass behind tree crowns and signs.
     const margin = 32; // Includes the tallest tree crown outside the viewport.
-    const scene = streetObjects.filter((o) =>
-      o.x >= x - margin && o.x <= x + vw + margin && o.y >= y - margin && o.y <= y + vh + margin,
+    const scene: (StreetObject | Vehicle | Pedestrian | Player)[] = streetObjects.filter(
+      (o) =>
+        o.x >= x - margin && o.x <= x + vw + margin && o.y >= y - margin && o.y <= y + vh + margin,
     );
     for (const p of world.players) {
       if (p.parkedCar) scene.push(p.parkedCar);
@@ -584,9 +619,9 @@ export function makeRenderer(canvas) {
     scene.sort((a, b) => a.y - b.y);
     const signal = signals(world.time).vertical;
     for (const item of scene) {
-      if (item.kind) drawStreetObject(b, item, signal);
-      else if (item.parkedCar) character(b, item, world.time);
-      else if (item.route !== undefined) pedestrian(b, item);
+      if ('kind' in item) drawStreetObject(b, item, signal);
+      else if ('parkedCar' in item && item.parkedCar) character(b, item, world.time);
+      else if ('route' in item) pedestrian(b, item);
       else car(b, item, item.id === me, world.time);
     }
     for (const v of world.players) {
