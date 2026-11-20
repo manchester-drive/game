@@ -8,38 +8,25 @@ import { el } from './hud';
 import { post } from './network';
 
 export function setupChat(releaseControls: () => void) {
-  const dialog = el('chat-dialog'),
-    toggle = el('chat-toggle'),
+  const panel = el('chat-panel'),
     log = el('chat-log');
   const form = el('chat-form'),
     input = el('chat-input'),
     send = el('chat-send');
-  const status = el('chat-status'),
-    badge = el('chat-unread');
+  const status = el('chat-status');
   input.maxLength = chatTextLimit;
   let token: string | undefined,
     online = false,
     sending = false,
     error = '';
-  let unread = 0,
-    receivedHistory = false;
 
-  function updateBadge() {
-    badge.textContent = String(unread);
-    badge.hidden = unread === 0;
-    toggle.setAttribute('aria-label', unread ? `Global chat, ${unread} unread` : 'Global chat');
-  }
-
-  function open() {
-    releaseControls();
-    dialog.showModal();
-    log.scrollTop = log.scrollHeight;
-    unread = 0;
-    updateBadge();
-    if (token) input.focus();
-  }
-  toggle.onclick = open;
-  el('chat-close').onclick = () => dialog.close();
+  panel.addEventListener('focusin', releaseControls);
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !event.isComposing) {
+      event.preventDefault();
+      el('map').focus({ preventScroll: true });
+    }
+  });
 
   function refreshForm() {
     form.hidden = !token;
@@ -80,7 +67,6 @@ export function setupChat(releaseControls: () => void) {
       name = document.createElement('strong');
     name.style.color = message.color;
     name.textContent = message.name;
-    line.dataset.id = message.id;
     line.append(name, ' ', message.text);
     log.append(line);
   }
@@ -88,23 +74,14 @@ export function setupChat(releaseControls: () => void) {
   function receive(event: ChatEvent) {
     const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 12;
     if (event.type === 'history') {
-      // Reconnects replace the transcript, including any messages missed offline.
-      if (receivedHistory && !dialog.open) {
-        const lastId = log.lastElementChild?.getAttribute('data-id');
-        const last = event.messages.findIndex((m) => m.id === lastId);
-        unread = Math.min(event.messages.length, unread + event.messages.length - last - 1);
-      }
-      receivedHistory = true;
       log.replaceChildren();
       for (const message of event.messages) append(message);
     } else {
       append(event.message);
       if (log.childElementCount > chatHistoryLimit) log.firstElementChild!.remove();
-      if (!dialog.open) unread = Math.min(unread + 1, chatHistoryLimit);
     }
     el('chat-empty').hidden = !!log.childElementCount;
-    if (dialog.open && atEnd) log.scrollTop = log.scrollHeight;
-    updateBadge();
+    if (atEnd) log.scrollTop = log.scrollHeight;
   }
 
   function updateSession(next: string | undefined, connected: boolean) {
@@ -117,5 +94,5 @@ export function setupChat(releaseControls: () => void) {
     online = connected;
     refreshForm();
   }
-  return { dialog, open, receive, updateSession };
+  return { receive, updateSession };
 }

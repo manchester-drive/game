@@ -212,18 +212,18 @@ map.addEventListener('lostpointercapture', (event) => {
 });
 for (const type of ['keydown', 'keyup'] as const)
   window.addEventListener(type, (event) => {
-    if (event.metaKey || event.ctrlKey || event.altKey || chat.dialog.open || event.isComposing)
-      return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
     if (
       event.target instanceof HTMLElement &&
       (event.target.isContentEditable || event.target.matches('input, textarea, select'))
     )
       return;
-    if (event.code === 'KeyT' && type === 'keydown' && !event.repeat) {
+    if (session && event.code === 'KeyT' && type === 'keydown' && !event.repeat) {
       event.preventDefault();
-      chat.open();
+      el('chat-input').focus({ preventScroll: true });
       return;
     }
+    if (event.target instanceof Element && event.target.closest('#chat-panel')) return;
     if (freeCam) {
       if (event.code === 'Escape' && type === 'keydown') toggleCamera();
       else if (Object.hasOwn(panDirections, event.code)) {
@@ -253,6 +253,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('.touch button
   button.onpointerdown = (event) => {
     if (doorBusy) return;
     event.preventDefault();
+    map.focus({ preventScroll: true });
     button.setPointerCapture(event.pointerId);
     touch |= bit;
     button.classList.add('active');
