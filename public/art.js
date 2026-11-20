@@ -1,6 +1,7 @@
 import { gates, raceEntry } from './race.js';
-import { circuit, crosswalks, WIDTH, HEIGHT } from './streets.js';
-import { buildings, roads, paths, areas, trees } from './manchester-map.js';
+import { circuit, crosswalks, streetObjects, WIDTH, HEIGHT } from './streets.js';
+import { buildings, roads, paths, areas } from './manchester-map.js';
+import { jackets, models, skinTones } from './garage.js';
 import { signals } from './world.js';
 
 function rect(g, x, y, w, h, color) {
@@ -19,9 +20,9 @@ function random(seed) {
     return seed / 4294967296;
   };
 }
-function tree(g, x, y, scale = 1) {
+function tree(g, x, y, scale) {
   g.save();
-  g.translate(x, y);
+  g.translate(x, y - 11 * scale);
   g.scale(scale, scale);
   const R = (x, y, w, h, c) => rect(g, x, y, w, h, c);
   R(-6, 5, 19, 8, '#68735b');
@@ -38,6 +39,56 @@ function tree(g, x, y, scale = 1) {
   R(2, -7, 4, 3, '#829c62');
   R(4, 0, 4, 3, '#426648');
   g.restore();
+}
+function drawStreetObject(g, item, signal) {
+  const { kind, x, y } = item;
+  switch (kind) {
+    case 'tree':
+      tree(g, x, y, item.radius / 2);
+      break;
+    case 'signal':
+      light(g, x - 1, y - 12, signal);
+      break;
+    case 'bench':
+      rect(g, x - 5, y - 2, 10, 4, '#4c5045');
+      rect(g, x - 5, y - 3, 10, 2, '#ab7d50');
+      rect(g, x - 5, y, 10, 2, '#c19762');
+      break;
+    case 'bollard':
+      rect(g, x - 1, y - 4, 3, 5, '#364341');
+      rect(g, x - 1, y - 3, 3, 1, '#e9ce86');
+      break;
+    case 'busStop':
+      rect(g, x - 1, y - 13, 2, 14, '#4c5250');
+      rect(g, x - 2, y - 16, 8, 6, '#524a37');
+      rect(g, x - 1, y - 15, 6, 4, '#f2c346');
+      rect(g, x, y - 14, 4, 1, '#554e3e');
+      break;
+    case 'guidepost':
+      rect(g, x - 1, y - 13, 2, 14, '#394640');
+      rect(g, x - 6, y - 14, 7, 3, '#356058');
+      rect(g, x, y - 10, 7, 3, '#356058');
+      rect(g, x - 5, y - 13, 4, 1, '#e7ddbd');
+      rect(g, x + 2, y - 9, 4, 1, '#e7ddbd');
+      break;
+    case 'bin':
+      rect(g, x - 2, y - 4, 4, 6, '#40534d');
+      rect(g, x - 2, y - 5, 4, 2, '#788177');
+      rect(g, x - 1, y - 4, 2, 1, '#263532');
+      break;
+    case 'postBox':
+      rect(g, x - 2, y - 7, 5, 9, '#a64436');
+      rect(g, x - 3, y - 8, 6, 2, '#c75a43');
+      rect(g, x - 1, y - 5, 3, 1, '#3f342f');
+      rect(g, x - 2, y, 5, 2, '#45473d');
+      break;
+    case 'planter':
+      rect(g, x - item.hx, y - item.hy, item.hx * 2, item.hy * 2, '#896b51');
+      rect(g, x - 5, y - 4, 10, 2, '#aa8970');
+      rect(g, x - 3, y - 6, 6, 4, '#507854');
+      rect(g, x - 2, y - 7, 3, 2, '#86a36b');
+      break;
+  }
 }
 function outline(g, points, closed = false) {
   g.moveTo(...points[0]);
@@ -253,8 +304,6 @@ function terrainTile(left, top, tile) {
     const [x, y] = building.rings[0][0];
     footprint(g, building, random(x + y * WIDTH));
   }
-  for (const [x, y] of tile.trees) tree(g, x, y, 0.75 + random(x + y * WIDTH)() * 0.4);
-
   for (const anchor of tile.labels) {
     g.save();
     g.translate(anchor.x, anchor.y);
@@ -309,7 +358,6 @@ function makeTerrain() {
     roads: [],
     paths: [],
     buildings: [],
-    trees: [],
     crosswalks: [],
     labels: [],
   }));
@@ -330,7 +378,6 @@ function makeTerrain() {
   for (const p of paths) index('paths', p, p.points, 8);
   for (const a of areas) index('areas', a, a.points, 1);
   for (const b of buildings) index('buildings', b, b.rings.flat(), 3);
-  for (const t of trees) index('trees', t, [t], 20);
   for (const c of crosswalks) index('crosswalks', c, [[c.x, c.y]], c.half + 20);
   for (const l of streetLabels()) index('labels', l, [[l.x, l.y]], l.name.length * 3 + 12);
   const cache = new Map();
@@ -360,6 +407,8 @@ function car(g, v, local, time) {
   g.save();
   g.translate(Math.round(v.x), Math.round(v.y));
   g.rotate(v.angle);
+  const model = models[v.model ?? 'hatch'];
+  g.scale(model.length / 9.5, model.width / 4.8);
   const R = (x, y, w, h, c) => rect(g, x, y, w, h, c);
   R(-8, -4, 19, 11, '#2b333272');
   R(-8, -5, 16, 10, '#2c3736');
@@ -375,6 +424,17 @@ function car(g, v, local, time) {
   R(-2, -4, 4, 8, v.color);
   R(-2, -4, 4, 1, '#ffffff66');
   R(5, -3, 3, 1, '#ffffff66');
+  if (v.model === 'van') {
+    R(-8, -4, 12, 8, v.color);
+    R(-7, -3, 9, 1, '#ffffff55');
+    R(-7, 2, 9, 1, '#00000030');
+    R(3, -3, 2, 6, '#8ba4a2');
+  } else if (v.model === 'coupe') {
+    R(-5, -3, 5, 6, '#31484d');
+    R(-4, -2, 3, 4, '#647e82');
+    R(3, -1, 5, 2, '#efdbb3');
+    R(-8, -5, 2, 10, '#303b3a');
+  }
   R(8, -4, 1, 2, '#ffe8ab');
   R(8, 2, 1, 2, '#ffe8ab');
   for (const y of [-3, 2]) {
@@ -397,6 +457,39 @@ function car(g, v, local, time) {
   }
   g.restore();
 }
+function character(g, player, time) {
+  g.save();
+  g.translate(Math.round(player.x), Math.round(player.y));
+  g.rotate(player.angle);
+  const stride = player.speed > 1 ? Math.sin(time * 13) * 2 : 0;
+  rect(g, -3 + stride, -2, 3, 2, '#29363a');
+  rect(g, -3 - stride, 1, 3, 2, '#29363a');
+  rect(g, -2, -3, 4, 6, jackets[player.jacket]);
+  rect(g, -1 - stride, -4, 3, 2, jackets[player.jacket]);
+  rect(g, -1 + stride, 2, 3, 2, jackets[player.jacket]);
+  rect(g, 1, -2, 3, 4, skinTones[player.skin]);
+  rect(g, -1, -2, 3, 4, '#453b35');
+  g.restore();
+}
+function pedestrian(g, p) {
+  const stride = Math.floor((p.x + p.y) / 3) % 2;
+  rect(g, p.x - 2, p.y + 2, 6, 2, '#727468');
+  rect(g, p.x - 2, p.y, 1, 3 - stride, '#3e4743');
+  rect(g, p.x + 1, p.y, 1, 2 + stride, '#3e4743');
+  rect(g, p.x - 2, p.y - 3, 4, 4, p.color);
+  rect(g, p.x - 1, p.y - 5, 3, 3, '#b88b68');
+  rect(g, p.x - 1, p.y - 6, 3, 2, '#55483e');
+}
+export function drawGarage(canvas, style) {
+  const g = canvas.getContext('2d');
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.save();
+  g.scale(3, 3);
+  car(g, { ...style, x: 15, y: 8, angle: 0, color: '#51ccc2' }, false, 0);
+  character(g, { ...style, x: 35, y: 8, angle: 0, speed: 0 }, 0);
+  g.restore();
+}
+
 function drawGate(g, gate, viewX, viewY, width, height) {
   g.save();
   g.translate(gate.x, gate.y);
@@ -479,29 +572,24 @@ export function makeRenderer(canvas) {
       b.restore();
       drawGate(b, gates[entry.next], x, y, vw, vh);
     }
-    const lights = signals(world.time);
-    for (const c of crosswalks.filter((c) => c.signal)) {
-      for (const side of [-1, 1]) {
-        light(
-          b,
-          c.x - Math.sin(c.angle) * side * (c.half + 3),
-          c.y + Math.cos(c.angle) * side * (c.half + 3),
-          lights.vertical,
-        );
-      }
+    // Draw by ground position so people and cars can pass behind tree crowns and signs.
+    const margin = 32; // Includes the tallest tree crown outside the viewport.
+    const scene = streetObjects.filter((o) =>
+      o.x >= x - margin && o.x <= x + vw + margin && o.y >= y - margin && o.y <= y + vh + margin,
+    );
+    for (const p of world.players) {
+      if (p.parkedCar) scene.push(p.parkedCar);
     }
-    for (const v of world.traffic) car(b, v, false, world.time);
-    for (const p of world.people) {
-      const stride = Math.floor((p.x + p.y) / 3) % 2;
-      rect(b, p.x - 2, p.y + 2, 6, 2, '#727468');
-      rect(b, p.x - 2, p.y, 1, 3 - stride, '#3e4743');
-      rect(b, p.x + 1, p.y, 1, 2 + stride, '#3e4743');
-      rect(b, p.x - 2, p.y - 3, 4, 4, p.color);
-      rect(b, p.x - 1, p.y - 5, 3, 3, '#b88b68');
-      rect(b, p.x - 1, p.y - 6, 3, 2, '#55483e');
+    scene.push(...world.traffic, ...world.people, ...world.players);
+    scene.sort((a, b) => a.y - b.y);
+    const signal = signals(world.time).vertical;
+    for (const item of scene) {
+      if (item.kind) drawStreetObject(b, item, signal);
+      else if (item.parkedCar) character(b, item, world.time);
+      else if (item.route !== undefined) pedestrian(b, item);
+      else car(b, item, item.id === me, world.time);
     }
     for (const v of world.players) {
-      car(b, v, v.id === me);
       const str = v.id === me ? 'YOU' : v.name;
       b.font = 'bold 7px monospace';
       const lw = Math.ceil(b.measureText(str).width) + 6;

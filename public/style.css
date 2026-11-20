@@ -504,3 +504,50 @@ kbd {
     top: 58px;
   }
 }
+
+.garage {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.garage select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px 2px;
+  font: inherit;
+  color: var(--paper);
+  background: #303b36;
+  border: 1px solid #69746b;
+}
+#garage-preview {
+  margin-left: auto;
+  width: 96px;
+  image-rendering: pixelated;
+}
+#door {
+  font-size: 0.86rem;
+  height: 34px;
+  padding: 0 10px;
+}
+#car-location {
+  font:
+    0.82rem ui-monospace,
+    monospace;
+}
+#join {
+  max-height: calc(100% - 12px);
+  overflow-y: auto;
+}
+@media (max-width: 550px) {
+  .room #leave {
+    padding: 0 5px;
+    height: 28px;
+    font-size: 0.72rem;
+  }
+  .room:has(#leave:not([hidden])) #network {
+    font-size: 0;
+    gap: 0;
+  }
+}

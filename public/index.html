@@ -16,7 +16,8 @@
       </div>
       <div class="room">
         <span class="connection" id="network" role="status">Connecting</span
-        ><span id="count">0 / 8 drivers</span>
+        ><span id="count">0 / 8 players</span>
+        <button type="button" id="leave" hidden>Leave game</button>
       </div>
     </header>
     <main>
@@ -34,8 +35,14 @@
         <div class="form-title">
           <span class="car-icon" aria-hidden="true">▰</span>
           <h2>Drive Manchester</h2>
+          <canvas id="garage-preview" width="120" height="48" aria-hidden="true"></canvas>
         </div>
-        <label for="name">Driver name</label>
+        <div class="garage">
+          <label>Vehicle<select id="model"></select></label>
+          <label>Jacket<select id="jacket"></select></label>
+          <label>Skin tone<select id="skin"></select></label>
+        </div>
+        <label for="name">Player name</label>
         <div class="fields">
           <input id="name" placeholder="Driver" maxlength="16" autocomplete="nickname" /><button
             id="start"
@@ -54,9 +61,12 @@
         <button id="dismiss-results" type="button" hidden>Close results</button>
       </section>
       <section id="dash" aria-label="Driver dashboard" hidden>
-        <div class="readout"><b id="speed">00</b><span>MPH</span><strong id="gear">N</strong></div>
+        <div class="readout" id="readout">
+          <b id="speed">00</b><span>MPH</span><strong id="gear">N</strong>
+        </div>
         <button type="button" id="race-action">Open race</button>
-        <button type="button" id="leave">Leave car</button>
+        <span id="car-location" hidden></span>
+        <button type="button" id="door" title="Enter or exit your car (E)">Get out</button>
       </section>
       <div id="notice" role="status" hidden></div>
       <div class="touch" id="touch" hidden aria-label="Driving controls">
@@ -73,7 +83,10 @@
     <footer>
       <div class="bindings" id="driving-keys">
         <span><kbd>W</kbd> Accelerate</span><span><kbd>S</kbd> Brake / reverse</span
-        ><span><kbd>A</kbd><kbd>D</kbd> Steer</span>
+        ><span><kbd>A</kbd><kbd>D</kbd> Steer</span><span><kbd>E</kbd> Door</span>
+      </div>
+      <div class="bindings" id="walking-keys" hidden>
+        <span><kbd>WASD</kbd> Walk</span><span><kbd>E</kbd> Enter car</span>
       </div>
       <div class="bindings" id="camera-keys" hidden>Drag to pan · WASD or arrow keys</div>
       <a

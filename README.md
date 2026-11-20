@@ -1,6 +1,6 @@
 # Manchester Drive
 
-Drive through Piccadilly Gardens, the Northern Quarter and the surrounding city centre on streets drawn from OpenStreetMap. One Node process hosts the map for up to eight drivers. Cars, traffic signals and pedestrians are shared between browsers.
+Drive through Piccadilly Gardens, the Northern Quarter and the surrounding city centre on streets drawn from OpenStreetMap. One Node process hosts the map for up to eight players. Cars, traffic signals and pedestrians are shared between browsers.
 
 ## Play
 
@@ -10,9 +10,9 @@ From this directory, use Node 22 or later. The server and client have no package
 npm start
 ```
 
-Open [the game](http://127.0.0.1:4173) in two browser windows, enter different driver names and select **Drive** in each. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. **Leave car** frees your place in the room.
+Open [the game](http://127.0.0.1:4173) in two browser windows, choose a name, vehicle, jacket and skin tone, then select **Drive**. The hatchback has balanced handling, the sports coupé accelerates faster and the panel van is longer with a wider turning circle. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or **Enter car** to drive again. Other players can see your character and parked car. **Leave game** removes both and frees your place in the room.
 
-Select **Free cam** to explore before joining or while driving. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. Spectators can explore without claiming a driver slot. If you already have a car, it coasts while the camera is detached.
+Select **Free cam** to explore before joining, while driving or on foot. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. Spectators can explore without claiming a driver slot. If you already have a car, it coasts while the camera is detached.
 
 Brake lights brighten red as drivers slow down. NPCs hold them on while waiting at lights, in queues, or at a crossing. Hold **S** while moving forward to brake, then keep holding it to reverse with white rear lights.
 
@@ -24,7 +24,7 @@ Two drivers select **Drive** in the same room. One selects **Open race** and the
 
 Follow the dotted racing line and cross the gold gates on Lever Street, Faraday Street, Hilton Street and Oldham Street. The arrow points towards an off-screen gate. At the gate it shows the crossing direction. If you miss one, return and cross it in that direction. The chequered finish on Piccadilly counts after all four gates. Both racers see the server's finish order and lap times.
 
-Use **Leave race** to return to free driving. Before the start, the other driver can wait for a replacement. After the start, withdrawing or disconnecting records a DNF. Select **Race again** to open another race.
+Use **Leave race** to return to free driving. Before the start, the other driver can wait for a replacement. Getting out of the car also withdraws you. After the start, withdrawing or disconnecting records a DNF. Select **Race again** to open another race.
 
 For two devices on the same local network, start a LAN-accessible room on port 4174.
 
@@ -48,7 +48,7 @@ For a playtest, start together on Piccadilly, split up at Lever Street and meet 
 
 The server advances the world at 60 simulation steps per second and broadcasts snapshots over Server-Sent Events at 15 Hz. Each browser sends sequenced control changes over HTTP, predicts its own car between snapshots and interpolates other road users. A lost heartbeat releases the controls and eventually removes the car. The shared room lasts for the lifetime of the server.
 
-Cars collide with the edges of mapped building footprints, other vehicles, pedestrians and the edge of the playable area. Traffic follows two connected circuits, brakes for queues and crossings, and indicates before turning. Signal timings and lane positions are game approximations. Free driving allows either direction. The race and both traffic routes follow mapped motorcar access and one-way directions.
+Cars and walkers collide with buildings, vehicles, other players and the edge of the playable area. Tree trunks, bus stop poles, fingerposts, traffic lights, benches, fixed bollards, litter bins, pillar boxes and planters also have solid bases. You can pass under branches and behind signs. Traffic follows two connected circuits, brakes for queues and crossings, and indicates before turning. Signal timings and lane positions are game approximations. Free driving allows either direction. The race and both traffic routes follow mapped motorcar access and one-way directions.
 
 ## Map data
 

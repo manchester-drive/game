@@ -8,10 +8,12 @@ import {
   faradayMerge,
   gridDistance,
   spawns,
+  streetObjects,
 } from './streets.js';
 import { buildings, garden_walks as gardenWalks } from './manchester-map.js';
-import { checkGate, heldOnGrid } from './race.js';
-export { WIDTH, HEIGHT, JUNCTION } from './streets.js';
+import { checkGate, heldOnGrid, withdraw } from './race.js';
+import { appearance, models } from './garage.js';
+export { WIDTH, HEIGHT, JUNCTION, signalPosts } from './streets.js';
 export const COLORS = [
   '#51ccc2',
   '#f2ba52',
@@ -33,48 +35,67 @@ function box(x, y, angle, hx, hy) {
   return { x, y, ux: Math.cos(angle), uy: Math.sin(angle), hx, hy };
 }
 function vehicleBox(v) {
-  return box(v.x, v.y, v.angle, 9.5, 4.8);
+  const model = models[v.model ?? 'hatch'];
+  return box(v.x, v.y, v.angle, model.length, model.width);
 }
 function personBox(p) {
   return box(p.x, p.y, 0, 2.2, 2.2);
 }
-// Index footprint edges, including courtyards, once for both prediction and the server.
+// Index building edges and street objects once for both prediction and the server.
 const cells = new Map();
 const cellKey = (x, y) => x + ',' + y;
+function indexSolid(solid) {
+  // Expand by the largest vehicle's corner radius so each mover only queries one cell.
+  const rx = (solid.radius ?? radius(solid, 1, 0)) + 13,
+    ry = (solid.radius ?? radius(solid, 0, 1)) + 13;
+  for (let cx = Math.floor((solid.x - rx) / 64); cx <= (solid.x + rx) / 64; cx++) {
+    for (let cy = Math.floor((solid.y - ry) / 64); cy <= (solid.y + ry) / 64; cy++) {
+      const key = cellKey(cx, cy);
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push(solid);
+    }
+  }
+}
 for (const { rings } of buildings) {
   for (const ring of rings) {
     for (let i = 0; i < ring.length; i++) {
       const [x, y] = ring[i],
         [ex, ey] = ring[(i + 1) % ring.length];
       const length = Math.hypot(ex - x, ey - y);
-      if (!length) continue;
-      const wall = box((x + ex) / 2, (y + ey) / 2, Math.atan2(ey - y, ex - x), length / 2, 0.35);
-      // A car's corner is at most 11 pixels from its centre.
-      for (
-        let cx = Math.floor((Math.min(x, ex) - 12) / 64);
-        cx <= (Math.max(x, ex) + 12) / 64;
-        cx++
-      ) {
-        for (
-          let cy = Math.floor((Math.min(y, ey) - 12) / 64);
-          cy <= (Math.max(y, ey) + 12) / 64;
-          cy++
-        ) {
-          const key = cellKey(cx, cy);
-          if (!cells.has(key)) cells.set(key, []);
-          cells.get(key).push(wall);
-        }
-      }
+      if (length)
+        indexSolid(box((x + ex) / 2, (y + ey) / 2, Math.atan2(ey - y, ex - x), length / 2, 0.35));
     }
   }
+}
+for (const item of streetObjects) {
+  indexSolid(item.radius ? item : box(item.x, item.y, 0, item.hx, item.hy));
 }
 function wallContact(body) {
   const walls = cells.get(cellKey(Math.floor(body.x / 64), Math.floor(body.y / 64))) ?? [];
   for (const wall of walls) {
-    const hit = contact(body, wall);
+    const hit = wall.radius ? roundContact(body, wall) : contact(body, wall);
     if (hit) return hit;
   }
   return null;
+}
+function roundContact(body, post) {
+  // Closest point on the moving box, in its own forward/sideways coordinates.
+  const dx = post.x - body.x, dy = post.y - body.y;
+  const forward = dx * body.ux + dy * body.uy;
+  const side = -dx * body.uy + dy * body.ux;
+  let nx = forward - Math.max(-body.hx, Math.min(body.hx, forward));
+  let ny = side - Math.max(-body.hy, Math.min(body.hy, side));
+  const distance = Math.hypot(nx, ny);
+  if (distance >= post.radius) return null;
+  if (distance > 0) {
+    nx /= distance;
+    ny /= distance;
+  } else if (body.hx - Math.abs(forward) < body.hy - Math.abs(side)) {
+    nx = forward < 0 ? -1 : 1;
+  } else {
+    ny = side < 0 ? -1 : 1;
+  }
+  return { nx: nx * body.ux - ny * body.uy, ny: nx * body.uy + ny * body.ux };
 }
 function radius(b, x, y) {
   return Math.abs(x * b.ux + y * b.uy) * b.hx + Math.abs(y * b.ux - x * b.uy) * b.hy;
@@ -107,24 +128,22 @@ function contact(a, b) {
 function overlap(a, b) {
   return contact(a, b) !== null;
 }
-function obstacle(v, vehicles, people, bounded) {
-  const body = vehicleBox(v);
-  if (bounded) {
-    const rx = radius(body, 1, 0),
-      ry = radius(body, 0, 1);
-    if (v.x < rx) return { nx: -1, ny: 0 };
-    if (v.x > WIDTH - rx) return { nx: 1, ny: 0 };
-    if (v.y < ry) return { nx: 0, ny: -1 };
-    if (v.y > HEIGHT - ry) return { nx: 0, ny: 1 };
-  }
+function obstacle(v, vehicles, people, body = vehicleBox(v)) {
+  const rx = radius(body, 1, 0),
+    ry = radius(body, 0, 1);
+  if (v.x < rx) return { nx: -1, ny: 0 };
+  if (v.x > WIDTH - rx) return { nx: 1, ny: 0 };
+  if (v.y < ry) return { nx: 0, ny: -1 };
+  if (v.y > HEIGHT - ry) return { nx: 0, ny: 1 };
   const wall = wallContact(body);
   if (wall) return wall;
   for (const other of vehicles) {
     if (other.id === v.id) continue;
     const hit = contact(body, vehicleBox(other));
-    if (hit) return { ...hit, other };
+    if (hit) return other.parked ? hit : { ...hit, other };
   }
   for (const person of people) {
+    if (person.id === v.id && v.id !== undefined) continue;
     const hit = contact(body, personBox(person));
     if (hit) return { ...hit, person };
   }
@@ -151,8 +170,8 @@ function dampSlide(car, dt) {
   car.slideY *= grip;
   if (Math.hypot(car.slideX, car.slideY) < 0.08) car.slideX = car.slideY = 0;
 }
-function moveCar(car, next, dt, vehicles, people, bounded, transferImpulse) {
-  const hit = obstacle(next, vehicles, people, bounded);
+function moveCar(car, next, dt, vehicles, people, transferImpulse) {
+  const hit = obstacle(next, vehicles, people);
   if (!hit) {
     Object.assign(car, next);
     return;
@@ -182,32 +201,141 @@ function moveCar(car, next, dt, vehicles, people, bounded, transferImpulse) {
     outY = (vy - iy) * grip;
   setVelocity(car, outX, outY);
   const slide = { ...car, x: car.x + outX * dt, y: car.y + outY * dt };
-  if (!obstacle(slide, vehicles, people, bounded)) Object.assign(car, slide);
+  if (!obstacle(slide, vehicles, people)) Object.assign(car, slide);
 }
 
+// A walking player still owns exactly one parked vehicle. Keeping it on the player
+// also removes both from the room together on leave or disconnect.
+export function roadUsers(world) {
+  return {
+    vehicles: [...world.traffic, ...world.players.map((p) => p.parkedCar ?? p)],
+    people: [...world.people, ...world.players.filter((p) => p.parkedCar)],
+  };
+}
+
+export function walk(player, keys, dt, vehicles, people) {
+  if (dt <= 0) return;
+  const dx = Number(!!(keys & 8)) - Number(!!(keys & 4));
+  const dy = Number(!!(keys & 2)) - Number(!!(keys & 1));
+  player.speed = 0;
+  if (!dx && !dy) return;
+  player.angle = Math.atan2(dy, dx);
+  const distance = (39 * dt) / Math.hypot(dx, dy);
+  const oldX = player.x,
+    oldY = player.y;
+  // Try each axis separately so the walker slides along an obstructed edge.
+  for (const [x, y] of [
+    [dx * distance, 0],
+    [0, dy * distance],
+  ]) {
+    const next = { ...player, x: player.x + x, y: player.y + y };
+    if (!obstacle(next, vehicles, people, personBox(next))) {
+      player.x = next.x;
+      player.y = next.y;
+    }
+  }
+  player.speed = Math.hypot(player.x - oldX, player.y - oldY) / dt;
+}
+
+export function useCar(world, player, action) {
+  const parked = player.parkedCar;
+  if (action !== (parked ? 'enter' : 'exit')) return 'Your position has changed.';
+  if (
+    !parked &&
+    (Math.abs(player.speed) > 2 || Math.hypot(player.slideX || 0, player.slideY || 0) > 2)
+  )
+    return 'Stop the car before getting out.';
+  const car = parked ?? player;
+  const { vehicles, people } = roadUsers(world);
+  const others = vehicles.filter((v) => v.id !== car.id);
+  const offset = vehicleBox(car).hy + 5;
+  for (const side of [1, -1]) {
+    const door = {
+      id: player.id,
+      x: car.x - side * Math.sin(car.angle) * offset,
+      y: car.y + side * Math.cos(car.angle) * offset,
+    };
+    if (parked && Math.hypot(player.x - door.x, player.y - door.y) > 12) continue;
+    // Sweep between the actor and the seat so a wall, post or another player
+    // between them also blocks the interaction.
+    const start = parked ? player : car,
+      end = parked ? car : door;
+    const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / 2));
+    let clear = true;
+    for (let i = 1; i <= steps; i++) {
+      const p = {
+        id: player.id,
+        x: start.x + ((end.x - start.x) * i) / steps,
+        y: start.y + ((end.y - start.y) * i) / steps,
+      };
+      if (obstacle(p, others, people, personBox(p))) {
+        clear = false;
+        break;
+      }
+    }
+    if (!clear) continue;
+    if (parked) {
+      Object.assign(player, { x: car.x, y: car.y, angle: car.angle, parkedCar: null });
+    } else {
+      withdraw(world, player.id);
+      player.parkedCar = {
+        id: 'parked-' + player.id,
+        parked: true,
+        x: car.x,
+        y: car.y,
+        angle: car.angle,
+        model: car.model,
+        color: car.color,
+        speed: 0,
+        rearLights: 'tail',
+      };
+      player.x = door.x;
+      player.y = door.y;
+    }
+    player.speed = player.slideX = player.slideY = 0;
+    player.rearLights = 'tail';
+    return;
+  }
+  return parked
+    ? 'Walk up beside your parked car.'
+    : 'Both doors are blocked. Move the car and try again.';
+}
 export function findRaceGrid(world, racers) {
-  const traffic = [
-    ...world.traffic,
-    ...world.players.filter((p) => !racers.some((r) => r.id === p.id)),
-  ];
+  const { vehicles, people } = roadUsers(world);
+  const traffic = vehicles.filter((v) => !racers.some((r) => r.id === v.id));
+  const drivers = racers.map((r) => world.players.find((p) => p.id === r.id));
   for (const gap of [6, 30, 54, 78]) {
     const slots = [gap, gap + 24].map((back) => circuit.pose(gridDistance - back));
-    if (slots.every((slot) => !obstacle(slot, traffic, world.people, true))) return slots;
+    const cars = slots.map((slot, i) => ({ ...drivers[i], ...slot }));
+    if (cars.every((car) => !obstacle(car, [...traffic, ...cars], people))) return slots;
   }
   return null;
 }
 
-export function placePlayer(id, name, color, world) {
-  const vehicles = [...world.players, ...world.traffic];
+export function placePlayer(id, name, color, world, options) {
+  const { vehicles, people } = roadUsers(world);
+  const style = appearance(options);
   for (const [x, y, angle] of spawns) {
-    const v = { id, name, color, x, y, angle, speed: 0, rearLights: 'tail' };
-    if (!obstacle(v, vehicles, world.people, true)) return v;
+    const v = {
+      id,
+      name,
+      color,
+      ...style,
+      parkedCar: null,
+      x,
+      y,
+      angle,
+      speed: 0,
+      rearLights: 'tail',
+    };
+    if (!obstacle(v, vehicles, people)) return v;
   }
   return null;
 }
 
 export function drive(car, keys, dt, vehicles, people, transferImpulse = true) {
   if (dt <= 0) return car;
+  const model = models[car.model ?? 'hatch'];
   dampSlide(car, dt);
   // Bits: W 1, S 2, A 4, D 8. Crossing zero under braking consumes a step.
   const pedal = Number(!!(keys & 1)) - Number(!!(keys & 2));
@@ -215,9 +343,14 @@ export function drive(car, keys, dt, vehicles, people, transferImpulse = true) {
   const braking = pedal * speed < 0;
   if (!pedal) speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - 30 * dt);
   else if (braking) speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - 180 * dt);
-  else speed = Math.min(128, Math.max(-48, speed + pedal * (pedal > 0 ? 80 : 56) * dt));
+  else
+    speed = Math.min(
+      model.topSpeed,
+      Math.max(-48, speed + pedal * (pedal > 0 ? model.acceleration : 56) * dt),
+    );
   const steer = Number(!!(keys & 8)) - Number(!!(keys & 4));
-  const angle = car.angle + steer * Math.sign(speed) * Math.min(Math.abs(speed) / 22, 2.45) * dt;
+  const angle =
+    car.angle + steer * Math.sign(speed) * Math.min(Math.abs(speed) / 22, model.turn) * dt;
   const dx = (Math.cos(angle) * speed + (car.slideX || 0)) * dt;
   const dy = (Math.sin(angle) * speed + (car.slideY || 0)) * dt;
   moveCar(
@@ -226,7 +359,6 @@ export function drive(car, keys, dt, vehicles, people, transferImpulse = true) {
     dt,
     vehicles,
     people,
-    true,
     transferImpulse,
   );
   if (braking) car.rearLights = 'brake';
@@ -322,14 +454,18 @@ export function step(world, inputs, dt) {
   if (world.race?.phase === 'countdown' && tickStart >= world.race.startAt)
     world.race.phase = 'racing';
   const lights = signals(world.time),
-    vehicles = [...world.players, ...world.traffic];
+    { vehicles, people } = roadUsers(world);
   for (const car of world.players) {
+    if (car.parkedCar) {
+      walk(car, inputs.get(car.id) ?? 0, dt, vehicles, people);
+      continue;
+    }
     if (heldOnGrid(world.race, car.id)) {
       car.speed = car.slideX = car.slideY = 0;
       continue;
     }
     const { x, y } = car;
-    drive(car, inputs.get(car.id) ?? 0, dt, vehicles, world.people);
+    drive(car, inputs.get(car.id) ?? 0, dt, vehicles, people);
     checkGate(world.race, car, x, y, tickStart, dt);
   }
 
@@ -339,7 +475,7 @@ export function step(world, inputs, dt) {
     const approaching = world.players.find((car) => {
       const keys = inputs.get(car.id) ?? 0;
       const pedal = Number(!!(keys & 1)) - Number(!!(keys & 2));
-      if (!pedal) return false;
+      if (!pedal || car.parkedCar) return false;
       return overlap(
         personBox(p),
         vehicleBox({
@@ -361,7 +497,8 @@ export function step(world, inputs, dt) {
         next.x <= WIDTH - 3 &&
         next.y <= HEIGHT - 3 &&
         !wallContact(bounds) &&
-        !vehicles.some((v) => overlap(bounds, vehicleBox(v)))
+        !vehicles.some((v) => overlap(bounds, vehicleBox(v))) &&
+        !world.players.some((p) => p.parkedCar && overlap(bounds, personBox(p)))
       ) {
         Object.assign(p, next);
         continue;
@@ -380,7 +517,8 @@ export function step(world, inputs, dt) {
     const next = { x: p.x + (dx * move) / (distance || 1), y: p.y + (dy * move) / (distance || 1) };
     if (
       wallContact(personBox(next)) ||
-      vehicles.some((v) => overlap(personBox(next), vehicleBox(v)))
+      vehicles.some((v) => overlap(personBox(next), vehicleBox(v))) ||
+      world.players.some((p) => p.parkedCar && overlap(personBox(next), personBox(p)))
     )
       continue;
     Object.assign(p, next);
@@ -436,6 +574,6 @@ export function step(world, inputs, dt) {
     const recovery = Math.exp(-1.4 * dt);
     next.x += (car.x - origin.x) * recovery + slideX - along * ux;
     next.y += (car.y - origin.y) * recovery + slideY - along * uy;
-    moveCar(car, { ...car, ...next, d, speed: nextSpeed }, dt, vehicles, world.people, true, true);
+    moveCar(car, { ...car, ...next, d, speed: nextSpeed }, dt, vehicles, people, true);
   }
 }

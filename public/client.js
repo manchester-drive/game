@@ -1,7 +1,9 @@
 import { gates, heldOnGrid, raceEntry } from './race.js';
 import { HEIGHT, WIDTH, streetAt } from './streets.js';
-import { makeRenderer, viewport } from './art.js';
-import { createWorld, drive, JUNCTION } from './world.js';
+import { drawGarage, makeRenderer, viewport } from './art.js';
+import { createWorld, drive, walk, roadUsers, JUNCTION } from './world.js';
+
+import { models, jackets, skinTones } from './garage.js';
 
 const el = (id) => document.getElementById(id);
 const map = el('map');
@@ -53,17 +55,74 @@ for (let y = 0; y < sprite.length; y++)
     }
   }
 
+for (const [id, palette] of [
+  ['model', models],
+  ['jacket', jackets],
+  ['skin', skinTones],
+]) {
+  for (const [key, value] of Object.entries(palette)) {
+    el(id).add(new Option(value.name ?? key[0].toUpperCase() + key.slice(1), key));
+  }
+  el(id).onchange = refreshPreview;
+}
+function outfit() {
+  return { model: el('model').value, jacket: el('jacket').value, skin: el('skin').value };
+}
+function refreshPreview() {
+  drawGarage(el('garage-preview'), outfit());
+}
+el('skin').value = 'tan';
+refreshPreview();
+
 function notice(message) {
   el('notice').textContent = message;
   el('notice').hidden = !message;
 }
+const walkingButtons = {
+  1: ['▲', 'Walk north'],
+  2: ['▼', 'Walk south'],
+  4: ['◀', 'Walk west'],
+  8: ['▶', 'Walk east'],
+};
+const drivingButtons = {
+  1: ['W', 'Accelerate'],
+  2: ['S', 'Brake or reverse'],
+  4: ['◀', 'Steer left'],
+  8: ['▶', 'Steer right'],
+};
+let doorBusy = false;
 function updateUI() {
+  const onFoot = !!predicted?.parkedCar;
   el('join').hidden = !!session || freeCam;
   el('dash').hidden = !session || freeCam;
   el('touch').hidden = !session || freeCam;
-  el('camera').textContent = freeCam ? (session ? 'Return to car' : 'Back to start') : 'Free cam';
+  el('camera').textContent = freeCam
+    ? session
+      ? onFoot
+        ? 'Return to player'
+        : 'Return to car'
+      : 'Back to start'
+    : 'Free cam';
   el('camera').disabled = busy;
-  el('driving-keys').hidden = freeCam;
+  el('driving-keys').hidden = freeCam || onFoot;
+  el('walking-keys').hidden = freeCam || !onFoot;
+  el('readout').hidden = onFoot;
+  el('car-location').hidden = !onFoot;
+  el('race-action').hidden = onFoot;
+  el('leave').hidden = !session;
+  const race = frames.at(-1)?.state.race,
+    entry = raceEntry(race, session?.id);
+  el('door').textContent = onFoot
+    ? 'Enter car'
+    : entry && !entry.withdrawn && entry.elapsed === null
+      ? 'Exit car & race'
+      : 'Get out';
+  el('door').disabled = !connected || !predicted || doorBusy;
+  for (const button of document.querySelectorAll('.touch button')) {
+    const [caption, label] = (onFoot ? walkingButtons : drivingButtons)[button.dataset.bit];
+    button.textContent = caption;
+    button.setAttribute('aria-label', label);
+  }
   el('camera-keys').hidden = !freeCam;
   el('start').disabled = busy || !connected;
   el('network').textContent = connected ? 'Live' : 'Connecting';
@@ -90,7 +149,9 @@ function updateRaceUI(state) {
     ? 'Free cam'
     : active && race.phase !== 'open'
       ? 'One-lap race'
-      : 'Free drive';
+      : predicted?.parkedCar
+        ? 'On foot'
+        : 'Free drive';
   const button = el('race-action');
   let action = '',
     caption = 'Race in progress';
@@ -187,10 +248,15 @@ async function post(path, data) {
   return { status: response.status, data: await response.json() };
 }
 async function sendInput() {
-  if (!session) return;
+  if (!session || doorBusy) return;
   const token = session.token;
   try {
-    const result = await post('/input', { token, keys: keyboard | touch, seq: ++sequence });
+    const result = await post('/input', {
+      token,
+      keys: keyboard | touch,
+      seq: ++sequence,
+      onFoot: !!predicted?.parkedCar,
+    });
     if (result.status === 401 && session?.token === token) {
       reset();
       notice(result.data.error);
@@ -206,7 +272,7 @@ el('join').addEventListener('submit', async (event) => {
   updateUI();
   notice('');
   try {
-    const result = await post('/join', { name: el('name').value });
+    const result = await post('/join', { name: el('name').value, ...outfit() });
     if (result.status !== 201) throw new Error(result.data.error || 'Could not join.');
     session = result.data;
     sequence = 0;
@@ -219,6 +285,27 @@ el('join').addEventListener('submit', async (event) => {
     updateUI();
   }
 });
+async function openDoor() {
+  if (!session || !predicted || !connected || doorBusy || freeCam) return;
+  doorBusy = true;
+  release();
+  updateUI();
+  notice('');
+  try {
+    const result = await post('/vehicle', {
+      token: session.token,
+      seq: ++sequence,
+      action: predicted.parkedCar ? 'enter' : 'exit',
+    });
+    if (result.status !== 200) notice(result.data.error || 'Could not use the car door.');
+  } catch {
+    notice('Could not reach the car. Try again.');
+  } finally {
+    doorBusy = false;
+    updateUI();
+  }
+}
+el('door').onclick = openDoor;
 el('leave').onclick = async () => {
   if (!session) return;
   const token = session.token;
@@ -294,6 +381,12 @@ for (const type of ['keydown', 'keyup'])
       }
       return;
     }
+    if (session && event.code === 'KeyE' && type === 'keydown' && !event.repeat) {
+      event.preventDefault();
+      openDoor();
+      return;
+    }
+    if (doorBusy) return;
     const bit = keyBits[event.code];
     if (!session || !bit || (type === 'keydown' && event.repeat)) return;
     event.preventDefault();
@@ -306,6 +399,7 @@ for (const type of ['keydown', 'keyup'])
 for (const button of document.querySelectorAll('.touch button')) {
   const bit = Number(button.dataset.bit);
   button.onpointerdown = (event) => {
+    if (doorBusy) return;
     event.preventDefault();
     button.setPointerCapture(event.pointerId);
     touch |= bit;
@@ -335,7 +429,7 @@ events.onmessage = (event) => {
   if (frames.length > 6) frames.shift();
   const player = state.players.find((p) => p.id === session?.id);
   if (player) predicted = { ...player };
-  el('count').textContent = state.players.length + ' / 8 drivers';
+  el('count').textContent = state.players.length + ' / 8 players';
   updateUI();
 };
 
@@ -343,7 +437,7 @@ function interpolate(list, before, t) {
   const prior = new Map(before.map((o) => [o.id, o]));
   return list.map((v) => {
     const p = prior.get(v.id);
-    if (!p || Math.hypot(v.x - p.x, v.y - p.y) > 100) return v;
+    if (!p || !!p.parkedCar !== !!v.parkedCar || Math.hypot(v.x - p.x, v.y - p.y) > 100) return v;
     return {
       ...v,
       x: p.x + (v.x - p.x) * t,
@@ -378,15 +472,18 @@ function draw(now) {
   let world = scene(now);
   if (predicted && session && connected) {
     const latest = frames.at(-1).state;
-    if (!heldOnGrid(latest.race, session.id))
-      drive(
-        predicted,
-        keyboard | touch,
-        dt,
-        [...latest.players, ...latest.traffic],
-        latest.people,
-        false,
-      );
+    const { vehicles, people } = roadUsers(latest);
+    if (predicted.parkedCar) {
+      walk(predicted, keyboard | touch, dt, vehicles, people);
+      const dx = predicted.parkedCar.x - predicted.x,
+        dy = predicted.parkedCar.y - predicted.y;
+      const directions = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+      const heading = directions[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8];
+      el('car-location').textContent =
+        'Car · ' + Math.round(Math.hypot(dx, dy) / 5) + ' m ' + heading;
+    } else if (!heldOnGrid(latest.race, session.id)) {
+      drive(predicted, keyboard | touch, dt, vehicles, people, false);
+    }
     // Predict the local pose, but render the same lamp signals spectators receive.
     world = {
       ...world,

@@ -1,4 +1,4 @@
-import { areas, crossings, height, roads, routes, width } from './manchester-map.js';
+import { areas, crossings, furniture, height, roads, routes, trees, width } from './manchester-map.js';
 
 export const WIDTH = width,
   HEIGHT = height;
@@ -214,3 +214,35 @@ export const crosswalks = crossings.map(({ centre: [x, y], signal, walk }) => {
   const half = Math.hypot(walk[0][0] - walk[1][0], walk[0][1] - walk[1][1]) / 2;
   return { x, y, angle, half, signal, stop: d - 16, walk };
 });
+
+export const signalPosts = crosswalks
+  .filter((c) => c.signal)
+  .flatMap((c) =>
+    [-1, 1].map((side) => ({
+      kind: 'signal',
+      // Stand just behind the stop line, clear of the pedestrian approach.
+      x: c.x - 19 * Math.cos(c.angle) - Math.sin(c.angle) * side * (c.half + 3),
+      y: c.y - 19 * Math.sin(c.angle) + Math.cos(c.angle) * side * (c.half + 3),
+      radius: 1.4,
+    })),
+  );
+
+// Ground footprints in world pixels, centred on the sprite's base.
+const footprints = {
+  bench: { hx: 5, hy: 2 },
+  planter: { hx: 4, hy: 3 },
+  bollard: { radius: 1.2 },
+  busStop: { radius: 1.25 },
+  guidepost: { radius: 1.25 },
+  bin: { radius: 2 },
+  postBox: { radius: 2.5 },
+};
+export const streetObjects = [
+  ...furniture.map((item) => ({ ...item, ...footprints[item.kind] })),
+  ...trees.map(([x, y]) => {
+    const seed = (Math.imul(x + y * WIDTH, 1664525) + 1013904223) >>> 0;
+    const scale = 0.75 + (seed / 4294967296) * 0.4;
+    return { kind: 'tree', x, y, radius: 2 * scale };
+  }),
+  ...signalPosts,
+];

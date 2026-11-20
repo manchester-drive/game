@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { raceCommand, withdraw } from './public/race.js';
-import { COLORS, createWorld, findRaceGrid, placePlayer, step } from './public/world.js';
+import { COLORS, createWorld, findRaceGrid, placePlayer, step, useCar } from './public/world.js';
 
 const media = { html: 'text/html', js: 'text/javascript', css: 'text/css' };
 const files = new Set([
@@ -15,6 +15,7 @@ const files = new Set([
   'streets.js',
   'manchester-map.js',
   'race.js',
+  'garage.js',
 ]);
 export function createGameServer() {
   const world = createWorld(),
@@ -51,7 +52,10 @@ export function createGameServer() {
         res.on('close', () => streams.delete(res));
         return;
       }
-      if (req.method === 'POST' && ['/join', '/input', '/leave', '/race'].includes(path)) {
+      if (
+        req.method === 'POST' &&
+        ['/join', '/input', '/leave', '/race', '/vehicle'].includes(path)
+      ) {
         if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host)
           return json(res, 403, { error: 'Open the game on this host.' });
         let body = '';
@@ -71,7 +75,7 @@ export function createGameServer() {
             token = randomUUID();
           const name = typeof data.name === 'string' ? data.name.trim().slice(0, 16) : '';
           const color = COLORS.find((c) => !world.players.some((p) => p.color === c));
-          const player = placePlayer(id, name || 'Driver', color, world);
+          const player = placePlayer(id, name || 'Driver', color, world, data);
           if (!player)
             return json(res, 409, {
               error: 'Traffic is blocking the starting bays. Try again shortly.',
@@ -82,6 +86,16 @@ export function createGameServer() {
         }
         const session = sessions.get(data.token);
         if (!session) return json(res, 401, { error: 'Your car left the junction. Join again.' });
+        if (path === '/vehicle') {
+          if (!Number.isSafeInteger(data.seq) || data.seq <= session.seq)
+            return json(res, 409, { error: 'Please try the door again.' });
+          session.seq = data.seq;
+          session.last = Date.now();
+          inputs.set(session.id, 0);
+          const player = world.players.find((p) => p.id === session.id);
+          const error = useCar(world, player, data.action);
+          return error ? json(res, 409, { error }) : json(res, 200, {});
+        }
         if (path === '/race') {
           const player = world.players.find((p) => p.id === session.id);
           const error = raceCommand(world, player, data.action, data.raceId, findRaceGrid);
@@ -97,7 +111,8 @@ export function createGameServer() {
         ) {
           session.last = Date.now();
           session.seq = data.seq;
-          inputs.set(session.id, data.keys);
+          const player = world.players.find((p) => p.id === session.id);
+          if (!!data.onFoot === !!player.parkedCar) inputs.set(session.id, data.keys);
         }
         return json(res, 200, {});
       }

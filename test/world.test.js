@@ -188,6 +188,7 @@ test('at a signalised crossing traffic waits on red and the walker crosses on al
     }
   }
   assert.ok(crossed && v.d > cross.stop + 45);
+  assert.equal(walker.next, 4, 'the walker cleared the signal post and returned to the kerb');
 });
 
 test('traffic yields at the unmarked Faraday Street crossing and resumes', () => {

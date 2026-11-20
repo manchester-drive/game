@@ -30,6 +30,7 @@ export function withdraw(world, id) {
 
 // Commands arrive with the race ID shown to the driver, to reject stale clicks.
 export function raceCommand(world, player, action, raceId, findGrid) {
+  if (player.parkedCar && action !== 'withdraw') return 'Get in your car to race.';
   const race = world.race;
   if (raceId !== (race?.id ?? null)) return 'The race has changed. Try again.';
   const entry = raceEntry(race, player.id);

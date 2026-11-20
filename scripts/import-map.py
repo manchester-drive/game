@@ -166,7 +166,35 @@ def convert(source):
             raise ValueError("Route is open")
         return result
 
-    trees = [nodes[n] for n,t in node_tags.items() if t.get("natural") == "tree" and in_view([nodes[n]])]
+    road_nodes = {n for wid in road_ids for n in ways[wid][0]}
+    trees, furniture = [], []
+    for n, t in node_tags.items():
+        if (not in_view([nodes[n]]) or t.get("indoor") == "yes" or t.get("level", "0") != "0"
+                or t.get("layer", "0") != "0" or t.get("location") == "underground"):
+            continue
+        if t.get("natural") == "tree":
+            trees.append(nodes[n])
+            continue
+        if t.get("amenity") == "bench":
+            kind = "bench"
+        elif t.get("barrier") == "bollard" and t.get("bollard", "fixed") == "fixed":
+            kind = "bollard"
+        # Use pavement platforms for bus stop flags. A stop position on a road
+        # centreline marks where the bus waits, not a physical pole.
+        elif (t.get("highway") == "bus_stop" and t.get("public_transport") == "platform"
+              and n not in road_nodes):
+            kind = "busStop"
+        elif t.get("information") == "guidepost":
+            kind = "guidepost"
+        elif t.get("amenity") == "waste_basket":
+            kind = "bin"
+        elif t.get("amenity") == "post_box" and t.get("post_box:type") == "pillar":
+            kind = "postBox"
+        elif t.get("barrier") == "planter":
+            kind = "planter"
+        else:
+            continue
+        furniture.append(dict(kind=kind, x=nodes[n][0], y=nodes[n][1]))
     # Kerbs and adjacent pavement nodes for the three animated crossings.
     crossings = []
     for wid, pavement_a, pavement_b in [(1024403309, 9229820695, 9229909861),
@@ -177,7 +205,7 @@ def convert(source):
         crossings.append(dict(centre=centre, signal=t.get("crossing") == "traffic_signals",
                               walk=[a, b, nodes[pavement_b], b, a, nodes[pavement_a]]))
     return dict(width=WIDTH, height=HEIGHT, roads=roads, paths=paths, areas=areas,
-                buildings=buildings, trees=trees,
+                buildings=buildings, trees=trees, furniture=furniture,
                 routes=[route(GARDENS_START, GARDENS), route(DALE_START, DALE)],
                 crossings=crossings,
                 garden_walks=[[nodes[n] for n in ways[wid][0]]

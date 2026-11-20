@@ -62,6 +62,24 @@ test('two clients share the same authoritative cars and controls belong to their
   assert.deepEqual(first, second);
   assert.equal(driver(first, b.id).x, driver(initial, b.id).x);
   assert.ok(!JSON.stringify(first).includes(a.token));
+  // A mode change invalidates older driving inputs. Both clients observe the same
+  // walker and parked car, and a duplicate exit cannot put the walker back inside.
+  assert.equal((await post('/vehicle', { token: b.id, action: 'exit', seq: 1 })).status, 401);
+  assert.equal((await post('/vehicle', { token: b.token, action: 'exit', seq: 2 })).status, 200);
+  assert.equal((await post('/vehicle', { token: b.token, action: 'exit', seq: 2 })).status, 409);
+  await post('/input', { token: b.token, seq: 1, keys: 1 });
+  async function parked(read) {
+    let frame;
+    do {
+      frame = await read();
+    } while (!driver(frame, b.id).parkedCar);
+    return driver(frame, b.id);
+  }
+  const [walker, seen] = await Promise.all(streams.map(parked));
+  assert.deepEqual(walker, seen);
+  assert.equal(walker.speed, 0);
+  assert.equal(walker.parkedCar.x, driver(initial, b.id).x);
+  assert.equal((await post('/vehicle', { token: b.token, action: 'enter', seq: 3 })).status, 200);
   await post('/leave', { token: a.token });
   let frame;
   do {
