@@ -1,74 +1,216 @@
-// A compressed street plan with the original Oldham Street crossing at its north-east corner.
-export const WIDTH = 800,
-  HEIGHT = 700;
-export const gardens = { west: 48, east: 400, north: 280, south: 588 };
-const { west, east, north, south } = gardens;
-export const JUNCTION = { x: east, y: north };
-export const zebra = { x: 237, y: south };
-export const corners = [
-  [west, north],
-  [east, north],
-  [west, south],
-  [east, south],
-];
-export const streets = [
-  { name: 'Piccadilly', x: 0, y: north, length: WIDTH, vertical: false },
-  { name: 'Oldham Street', x: east, y: 0, length: north, vertical: true },
-  { name: 'Portland Street', x: east, y: north, length: HEIGHT - north, vertical: true },
-  { name: 'Mosley Street', x: west, y: north, length: south - north, vertical: true },
-  { name: 'Parker Street', x: west, y: south, length: east - west, vertical: false },
-];
+import { areas, crossings, height, roads, routes, width } from './manchester-map.js';
+
+export const WIDTH = width,
+  HEIGHT = height;
+const byId = new Map(roads.map((road) => [road.id, road]));
+
+function segment(a, b) {
+  const x = b[0] - a[0],
+    y = b[1] - a[1];
+  const length = Math.hypot(x, y);
+  return { a, dx: x / length, dy: y / length, length };
+}
+function project(x, y, s) {
+  return Math.max(0, Math.min(s.length, (x - s.a[0]) * s.dx + (y - s.a[1]) * s.dy));
+}
+const streetSegments = roads
+  .filter((r) => r.name)
+  .flatMap((road) =>
+    road.points
+      .slice(1)
+      .map((p, i) => ({ ...segment(road.points[i], p), road }))
+      .filter((s) => s.length),
+  );
+const gardens = areas.find((a) => a.kind === 'gardens').points;
+function inGardens(x, y) {
+  let inside = false;
+  for (let i = 0, j = gardens.length - 1; i < gardens.length; j = i++) {
+    const [a, b] = gardens[i],
+      [c, d] = gardens[j];
+    if (b > y !== d > y && x < ((c - a) * (y - b)) / (d - b) + a) inside = !inside;
+  }
+  return inside;
+}
 export function streetAt(x, y) {
-  let nearest = streets[0],
-    best = Infinity;
-  for (const street of streets) {
-    const along = street.vertical ? y - street.y : x - street.x;
-    const across = street.vertical ? x - street.x : y - street.y;
-    const distance = across * across + Math.max(-along, 0, along - street.length) ** 2;
+  let best = Infinity,
+    nearest;
+  for (const s of streetSegments) {
+    const along = project(x, y, s);
+    const distance = (x - s.a[0] - along * s.dx) ** 2 + (y - s.a[1] - along * s.dy) ** 2;
     if (distance < best) {
-      nearest = street;
       best = distance;
+      nearest = s.road;
     }
   }
-  return best > 48 ** 2 ? 'Piccadilly Gardens' : nearest.name;
+  if (best > (nearest.width / 2) ** 2 && inGardens(x, y)) return 'Piccadilly Gardens';
+  return nearest.name;
 }
 
-// Distance along the circulating left-hand lane. Each straight ends in a quarter circle.
-const radius = 22,
-  turnLength = (radius * Math.PI) / 2,
-  offset = 14;
-const left = west + offset,
-  right = east - offset,
-  top = north + offset,
-  bottom = south - offset;
-let length = 0;
-const legs = [
-  [right - radius, top, -1, 0, right - left - 2 * radius],
-  [left, top + radius, 0, 1, bottom - top - 2 * radius],
-  [left + radius, bottom, 1, 0, right - left - 2 * radius],
-  [right, bottom - radius, 0, -1, bottom - top - 2 * radius],
-].map(([x, y, dx, dy, straight]) => {
-  const start = length;
-  length += straight + turnLength;
-  return { x, y, dx, dy, straight, start, end: length };
-});
-export const circuit = {
-  length,
-  crossing: legs[2].start + zebra.x - 20 - legs[2].x,
-  merge: legs[2].start + east - 48 - legs[2].x,
-  lights: legs[3].start + legs[3].y - (north + 42),
-  pose(d) {
-    const leg = legs.find((l) => d < l.end) ?? legs[0];
-    const along = d - leg.start,
-      straight = Math.min(along, leg.straight);
-    const turn = Math.max(0, along - leg.straight) / radius;
-    const forward = straight + radius * Math.sin(turn);
-    const inward = radius * (1 - Math.cos(turn));
+// Traverse joined OSM ways in route order. Offset into the left lane of wider roads
+// and round corners inside the junction so traffic changes heading over several ticks.
+function makeCircuit(legs) {
+  const vertices = [];
+  for (const [id, first, last] of legs) {
+    const road = byId.get(id),
+      direction = Math.sign(last - first);
+    for (let i = first; i !== last; i += direction) {
+      const p = road.points[i],
+        next = road.points[i + direction];
+      if (p[0] !== next[0] || p[1] !== next[1]) vertices.push({ p, road });
+    }
+  }
+  const edges = vertices.map(({ p }, i) => segment(p, vertices[(i + 1) % vertices.length].p));
+  const lane = vertices.map(({ p, road }, i) => {
+    const prev = (i + vertices.length - 1) % vertices.length;
+    const offset = (r) =>
+      r.oneway && r.width < 30 ? 0 : Math.min(9, r.width / 4, Math.max(2, r.width / 2 - 7));
+    const a = edges[prev],
+      b = edges[i];
+    return [
+      p[0] + (a.dy * offset(vertices[prev].road) + b.dy * offset(road)) / 2,
+      p[1] - (a.dx * offset(vertices[prev].road) + b.dx * offset(road)) / 2,
+    ];
+  });
+  const points = [];
+  for (let i = 0; i < lane.length; i++) {
+    const p = lane[i],
+      prev = lane[(i + lane.length - 1) % lane.length],
+      next = lane[(i + 1) % lane.length];
+    const a = segment(prev, p),
+      b = segment(p, next);
+    const trim = Math.min(22, a.length * 0.45, b.length * 0.45);
+    for (let j = 0; j <= 5; j++) {
+      const t = j / 5;
+      points.push([
+        p[0] - (1 - t) ** 2 * trim * a.dx + t * t * trim * b.dx,
+        p[1] - (1 - t) ** 2 * trim * a.dy + t * t * trim * b.dy,
+      ]);
+    }
+  }
+  let length = 0;
+  const segments = points.map((p, i) => {
+    const start = length,
+      s = segment(p, points[(i + 1) % points.length]);
+    length += s.length;
+    return { ...s, start, end: length };
+  });
+  const wrap = (d) => ((d % length) + length) % length;
+  function at(d) {
+    let lo = 0,
+      hi = segments.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (segments[mid].end <= d) lo = mid + 1;
+      else hi = mid;
+    }
+    return segments[lo];
+  }
+  function pose(distance) {
+    const d = wrap(distance),
+      s = at(d);
+    const look = at(wrap(d + 24));
     return {
-      x: leg.x + leg.dx * forward + leg.dy * inward,
-      y: leg.y + leg.dy * forward - leg.dx * inward,
-      angle: Math.atan2(leg.dy, leg.dx) - turn,
-      indicating: along >= leg.straight - 48,
+      x: s.a[0] + (d - s.start) * s.dx,
+      y: s.a[1] + (d - s.start) * s.dy,
+      angle: Math.atan2(s.dy, s.dx),
+      indicating: s.dx * look.dx + s.dy * look.dy < 0.97,
     };
-  },
-};
+  }
+  function nearest(x, y) {
+    let best = Infinity,
+      d = 0;
+    for (const s of segments) {
+      const along = project(x, y, s);
+      const distance = Math.hypot(x - s.a[0] - along * s.dx, y - s.a[1] - along * s.dy);
+      if (distance < best) {
+        d = s.start + along;
+        best = distance;
+      }
+    }
+    return d;
+  }
+  return { length, pose, nearest, points, wrap };
+}
+
+export const circuits = routes.map(makeCircuit);
+export const circuit = circuits[0];
+export const JUNCTION = circuit.pose(65);
+
+// The checkpoint centres and widths come from the carriageway. Pick mid-block
+// positions so the direction at each gate is unambiguous.
+function roadPosition(id, fraction, first = 0, last = byId.get(id).points.length - 1) {
+  const road = byId.get(id);
+  const points = road.points.slice(Math.min(first, last), Math.max(first, last) + 1);
+  if (first > last) points.reverse();
+  const segments = points
+    .slice(1)
+    .map((p, i) => segment(points[i], p))
+    .filter((s) => s.length);
+  let d = segments.reduce((total, s) => total + s.length, 0) * fraction;
+  for (const s of segments) {
+    if (d <= s.length)
+      return {
+        x: s.a[0] + d * s.dx,
+        y: s.a[1] + d * s.dy,
+        dx: s.dx,
+        dy: s.dy,
+        angle: Math.atan2(s.dy, s.dx),
+        halfWidth: road.width / 2,
+        street: road.name,
+      };
+    d -= s.length;
+  }
+}
+export const gates = [
+  [1340157207, 0.55],
+  [171879650, 0.5],
+  [246124650, 0.5],
+  [246124717, 0.5],
+  [165381945, 0.47],
+].map(([id, fraction]) => {
+  const [, first, last] = routes[0].find(([way]) => way === id);
+  return roadPosition(id, fraction, first, last);
+});
+for (const gate of gates) {
+  const compass = [
+    'east',
+    'southeast',
+    'south',
+    'southwest',
+    'west',
+    'northwest',
+    'north',
+    'northeast',
+  ];
+  gate.direction = compass[(Math.round(Math.atan2(gate.dy, gate.dx) / (Math.PI / 4)) + 8) % 8];
+}
+
+const faradayLeg = routes[0].find(([id]) => id === 171879650);
+const junction = byId.get(faradayLeg[0]).points[faradayLeg[1]];
+export const faradayMerge = circuits.map((route) => route.nearest(...junction));
+
+export const gridDistance = circuit.nearest(gates.at(-1).x, gates.at(-1).y);
+export const spawns = [
+  [165381945, 0.32],
+  [165381945, 0.7],
+  [165381945, 0.93],
+  [1193719603, 0.55],
+  [1050312118, 0.48],
+  [1050312118, 0.75],
+  [165381361, 0.5],
+  [165381361, 0.72],
+  [1095281941, 0.35],
+  [1095281941, 0.7],
+  [3650041, 0.3],
+  [3650041, 0.7],
+].map(([id, fraction]) => {
+  const p = roadPosition(id, fraction);
+  return [p.x - p.dy * (p.halfWidth - 3), p.y + p.dx * (p.halfWidth - 3), p.angle];
+});
+
+export const crosswalks = crossings.map(({ centre: [x, y], signal, walk }) => {
+  const d = circuit.nearest(x, y),
+    { angle } = circuit.pose(d);
+  const half = Math.hypot(walk[0][0] - walk[1][0], walk[0][1] - walk[1][1]) / 2;
+  return { x, y, angle, half, signal, stop: d - 16, walk };
+});

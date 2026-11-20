@@ -13,6 +13,7 @@ const files = new Set([
   'art.js',
   'world.js',
   'streets.js',
+  'manchester-map.js',
   'race.js',
 ]);
 export function createGameServer() {

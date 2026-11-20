@@ -94,8 +94,8 @@ function updateRaceUI(state) {
     results = '';
   if (race.phase === 'open')
     status = entry
-      ? 'Waiting for a second driver at Oldham Street.'
-      : race.racers[0].name + ' opened a race at Oldham Street.';
+      ? 'Waiting for a second driver on Piccadilly.'
+      : race.racers[0].name + ' opened a race on Piccadilly.';
   else if (race.phase === 'countdown') {
     status = 'On the grid · Get ready';
     clock = String(Math.max(1, Math.ceil(race.startAt - state.time)));

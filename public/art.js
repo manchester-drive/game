@@ -1,6 +1,7 @@
-import { gates, gateHalfWidth, raceEntry } from './race.js';
-import { corners, gardens, streets, zebra } from './streets.js';
-import { WIDTH, HEIGHT, buildings, signals, spawns } from './world.js';
+import { gates, raceEntry } from './race.js';
+import { circuit, crosswalks, WIDTH, HEIGHT } from './streets.js';
+import { buildings, roads, paths, areas, trees } from './manchester-map.js';
+import { signals } from './world.js';
 
 function rect(g, x, y, w, h, color) {
   g.fillStyle = color;
@@ -38,259 +39,241 @@ function tree(g, x, y, scale = 1) {
   R(4, 0, 4, 3, '#426648');
   g.restore();
 }
-function bench(g, x, y) {
-  rect(g, x + 1, y + 3, 16, 5, '#79816b');
-  rect(g, x + 2, y - 2, 2, 9, '#3b4942');
-  rect(g, x + 12, y - 2, 2, 9, '#3b4942');
-  for (let n = 0; n < 3; n++) rect(g, x, y - 2 + n * 3, 16, 2, n === 0 ? '#ce9f69' : '#976d48');
+function outline(g, points, closed = false) {
+  g.moveTo(...points[0]);
+  for (let i = 1; i < points.length; i++) g.lineTo(...points[i]);
+  if (closed) g.closePath();
 }
-function roof(g, b, rng) {
-  const { x, y, w, h, brick, roof, name } = b,
-    end = y + h,
-    R = (x, y, w, h, c) => rect(g, x, y, w, h, c);
-  R(x + 6, y + 7, w, h, '#7a7970');
-  R(x + 2, y + 4, w, h, '#91897a');
-  R(x, y, w, h, '#4c4542');
-  R(x + 2, y + 2, w - 4, h - 4, brick);
-  // The street-facing elevation occupies the bottom strip of the footprint.
-  const lip = end - 25;
-  for (let yy = lip; yy < end - 2; yy += 3)
-    for (let xx = x + 3 + (yy % 2) * 3; xx < x + w - 6; xx += 8)
-      if (rng() > 0.6) R(xx, yy, 5, 1, '#b08065');
-  for (let xx = x + 8; xx < x + w - 10; xx += 14) {
-    R(xx, lip + 3, 8, 10, '#c28f70');
-    R(xx + 1, lip + 4, 6, 7, '#3b4e51');
-    R(xx + 2, lip + 4, 2, 3, '#7b9694');
-    R(xx, lip + 11, 8, 1, '#d3b196');
-  }
-  R(x + 4, end - 11, w - 8, 9, '#414d48');
-  for (let xx = x + 7; xx < x + w - 7; xx += 14) {
-    R(xx, end - 10, 9, 7, '#728683');
-    R(xx, end - 10, 3, 5, '#96a39b');
-  }
-  const signW = Math.min(w - 12, name.length * 5 + 12);
-  R(x + (w - signW) / 2, end - 15, signW, 9, '#364742');
-  label(g, name, x + w / 2, end - 8, 7, '#e4d2a2');
-  R(x - 1, y - 1, w + 2, h - 23, '#564b48');
-  R(x, y, w, h - 25, '#cfab8a');
-  R(x + 2, y + 2, w - 4, h - 29, roof);
-  R(x + 3, lip - 2, w - 6, 2, '#594f4a');
-  for (let yy = y + 11; yy < lip - 3; yy += 12) {
-    R(x + 4, yy, w - 8, 1, '#635957');
-    R(x + 4, yy + 1, w - 8, 1, '#ffffff14');
-    for (let xx = x + 12 + (yy % 3) * 7; xx < x + w - 7; xx += 24) R(xx, yy - 4, 1, 4, '#49413a33');
-  }
-  for (let i = 0; i < (w * h) / 75; i++)
-    R(x + 4 + rng() * (w - 9), y + 3 + rng() * (h - 33), 2, 1, '#352f3b22');
-  const skylight = (sx, sy) => {
-    R(sx + 3, sy + 4, 25, 14, '#5f5651');
-    R(sx, sy, 25, 14, '#c2a78e');
-    R(sx + 1, sy + 1, 23, 12, '#414f50');
-    for (let j = 0; j < 3; j++) {
-      R(sx + 2 + j * 7, sy + 2, 6, 9, '#668184');
-      R(sx + 2 + j * 7, sy + 2, 3, 5, '#95a6a0');
-    }
-    R(sx, sy + 7, 25, 1, '#a39280');
-  };
-  skylight(x + 10, y + 18);
-  if (w > 110) skylight(x + 43, y + 18);
-  for (let j = 0; j < 2; j++) {
-    const vx = x + w - 22 - j * 15,
-      vy = y + h - 60;
-    R(vx + 3, vy + 4, 11, 12, '#625754');
-    R(vx, vy, 11, 12, '#a4a197');
-    for (let k = 0; k < 4; k++) R(vx + 2, vy + 2 + k * 2, 7, 1, '#59645f');
-  }
-  R(x + 12, y + h - 58, 8, 11, '#625956');
-  R(x + 10, y + h - 61, 8, 10, brick);
-  R(x + 9, y + h - 62, 10, 3, '#c79d82');
-  R(x + 11, y + h - 62, 6, 1, '#493e39');
+function line(g, points, width, ink) {
+  g.beginPath();
+  outline(g, points);
+  g.strokeStyle = ink;
+  g.lineWidth = width;
+  g.stroke();
 }
-function drawStreets(g, rng) {
-  // Paint each layer across the entire network so adjoining roads share open mouths.
-  for (const [half, ink] of [
-    [31, '#858179'],
-    [29, '#d5c8ad'],
-    [27, '#575b5b'],
-  ]) {
-    for (const { x, y, vertical, length } of streets) {
-      rect(
-        g,
-        x - half,
-        y - half,
-        half * 2 + (vertical ? 0 : length),
-        half * 2 + (vertical ? length : 0),
-        ink,
-      );
+function footprint(g, building, rng) {
+  const { rings, name } = building;
+  g.beginPath();
+  for (const ring of rings) outline(g, ring, true);
+  g.fillStyle = '#856650';
+  g.fill('evenodd');
+  g.lineWidth = 1.5;
+  g.strokeStyle = '#584e46';
+  g.stroke();
+  g.save();
+  g.clip('evenodd');
+  // Keep the brick elevation and roof inside the collision outline.
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const [x, y] = ring[i],
+        [ex, ey] = ring[(i + 1) % ring.length];
+      const length = Math.hypot(ex - x, ey - y);
+      for (let d = 5; d < length - 4; d += 12) {
+        const wx = x + ((ex - x) * d) / length,
+          wy = y + ((ey - y) * d) / length;
+        rect(g, wx, wy - 5, 4, 4, '#394d4b');
+        rect(g, wx, wy - 5, 2, 2, '#9ab0a9');
+      }
     }
   }
-  for (const { x, y, vertical, length } of streets) {
-    g.save();
-    g.translate(x, y);
-    if (vertical) g.rotate(Math.PI / 2);
-    for (let i = 0; i < length * 3; i++)
-      rect(g, rng() * length, rng() * 50 - 25, 2, 1, rng() > 0.5 ? '#5c605f' : '#535757');
-    const nearJunction = (d, margin) =>
-      corners.some(
-        ([cx, cy]) => Math.hypot(x + (vertical ? 0 : d) - cx, y + (vertical ? d : 0) - cy) < margin,
-      );
-    for (let d = 3; d + 13 < length; d += 29)
-      if (!nearJunction(d + 6, 52)) rect(g, d, -1, 13, 2, '#c7c4b4');
-    for (let d = 0; d < length; d++)
-      if (!nearJunction(d, 34))
-        for (const side of [-26, -24, 23, 25]) rect(g, d, side, 1, 1, '#c5ab66');
-    g.restore();
+  g.translate(0, -7);
+  g.beginPath();
+  for (const ring of rings) outline(g, ring, true);
+  g.strokeStyle = '#cab29b';
+  g.lineWidth = 3;
+  g.stroke();
+  g.clip('evenodd');
+  // Align roof seams and skylights with the longest exterior wall.
+  let angle = 0,
+    longest = 0;
+  for (let i = 0; i < rings[0].length; i++) {
+    const [x, y] = rings[0][i],
+      [ex, ey] = rings[0][(i + 1) % rings[0].length];
+    const length = Math.hypot(ex - x, ey - y);
+    if (length > longest) {
+      longest = length;
+      angle = Math.atan2(ey - y, ex - x);
+    }
   }
-  // Give-way lines on the two side-road approaches and the Parker Street zebra.
-  for (let offset = 2; offset < 26; offset += 6) {
-    rect(g, gardens.west - offset, gardens.north + 32, 3, 2, '#d8d4c4');
-    rect(g, gardens.east - 37, gardens.south - offset, 2, 3, '#d8d4c4');
+  if (Math.cos(angle) < 0) angle += Math.PI;
+  const ux = Math.cos(angle),
+    uy = Math.sin(angle);
+  const vertices = rings.flat();
+  const xx = vertices.map(([x, y]) => x * ux + y * uy);
+  const yy = vertices.map(([x, y]) => -x * uy + y * ux);
+  const x = Math.min(...xx),
+    y = Math.min(...yy);
+  const w = Math.max(...xx) - x,
+    h = Math.max(...yy) - y;
+  g.rotate(angle);
+  rect(
+    g,
+    x,
+    y,
+    w + 2,
+    h + 2,
+    ['#97897c', '#ad9583', '#99867c', '#a7907c', '#817e77'][Math.floor(rng() * 5)],
+  );
+  for (let row = y + 6; row < y + h; row += 12) {
+    rect(g, x, row, w + 1, 1, '#5e554844');
+    rect(g, x, row + 1, w + 1, 1, '#f2dbc533');
   }
-  for (let y = zebra.y - 26; y < zebra.y + 26; y += 8) rect(g, zebra.x - 6, y, 12, 4, '#dedac9');
-  for (const y of [zebra.y - 33, zebra.y + 33]) {
-    rect(g, zebra.x + 9, y - 5, 2, 9, '#405047');
-    rect(g, zebra.x + 9, y - 1, 2, 2, '#eddfc5');
-    rect(g, zebra.x + 8, y - 7, 4, 4, '#f3bd58');
+  for (let row = y + 14; row < y + h - 10; row += 46) {
+    for (let col = x + 14; col < x + w - 12; col += 47) {
+      if (rng() > 0.45) continue;
+      rect(g, col + 2, row + 3, 13, 8, '#645c55');
+      rect(g, col, row, 13, 8, '#b9a28a');
+      rect(g, col + 1, row + 1, 11, 5, '#52676b');
+      rect(g, col + 2, row + 1, 4, 3, '#92a5a2');
+    }
   }
+  if (name && w > name.length * 5 + 12 && h > 30) {
+    const mid = x + w / 2,
+      base = y + h / 2;
+    rect(g, mid - name.length * 2.5 - 3, base - 7, name.length * 5 + 6, 11, '#544c43');
+    label(g, name.toUpperCase(), mid, base + 1, 8, '#ecddc2');
+  }
+  g.restore();
 }
-function streetSign(g, x, y, lines) {
-  g.font = 'bold 7px monospace';
-  const width = Math.ceil(Math.max(...lines.map((line) => g.measureText(line).width))) + 8;
-  rect(g, x - 1, y, 3, 7, '#5b6256');
-  rect(g, x - width / 2, y - lines.length * 9, width, lines.length * 9, '#39463e');
-  for (const [i, line] of lines.entries())
-    label(g, line, x, y - (lines.length - 1 - i) * 9 - 2, 7, '#f6e6c5');
-}
+
 function terrain() {
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
   const g = canvas.getContext('2d'),
     rng = random(418);
-  const R = (x, y, w, h, c) => rect(g, x, y, w, h, c);
-  R(0, 0, WIDTH, HEIGHT, '#b7ac94');
-  for (let y = 0; y < HEIGHT; y += 7)
-    for (let x = -16 + (y % 2) * 8; x < WIDTH; x += 16) {
-      R(x, y, 15, 6, ['#c0b49f', '#bcb09b', '#b6aa96', '#c4b9a3'][Math.floor(rng() * 4)]);
+  rect(g, 0, 0, WIDTH, HEIGHT, '#bfb39e');
+  for (let y = 0; y < HEIGHT; y += 9) {
+    for (let x = -12 + (y % 2) * 12; x < WIDTH; x += 24)
+      rect(g, x, y, 23, 8, rng() > 0.5 ? '#c3b7a2' : '#bbae99');
+  }
+  const fills = { gardens: '#96a181', green: '#82966f', plaza: '#cbbdab', water: '#789a9c' };
+  for (const kind of Object.keys(fills)) {
+    for (const area of areas.filter((a) => a.kind === kind)) {
+      g.beginPath();
+      outline(g, area.points, true);
+      g.fillStyle = fills[kind];
+      g.fill();
+      if (kind !== 'plaza') {
+        g.save();
+        g.clip();
+        const xs = area.points.map(([x]) => x),
+          ys = area.points.map(([, y]) => y);
+        const x = Math.min(...xs),
+          y = Math.min(...ys);
+        const w = Math.max(...xs) - x,
+          h = Math.max(...ys) - y;
+        for (let i = 0; i < (w * h) / 80; i++) {
+          rect(
+            g,
+            x + rng() * w,
+            y + rng() * h,
+            kind === 'water' ? 5 : 2,
+            1,
+            kind === 'water' ? '#a5c2ba' : '#647b533a',
+          );
+        }
+        g.restore();
+      }
     }
-  // Piccadilly Gardens paths and central fountain.
-  g.save();
-  g.beginPath();
-  g.rect(gardens.west + 40, 331, 350 - (gardens.west + 40), 229);
-  g.clip();
-  R(0, 331, 350, 229, '#858775');
-  R(0, 333, 348, 227, '#799361');
-  for (let i = 0; i < 3600; i++)
-    R(rng() * 348, 333 + rng() * 227, 2, 1, rng() > 0.5 ? '#839b68' : '#738d5c');
-  R(0, 377, 347, 12, '#c4b89a');
-  R(241, 333, 13, 227, '#c4b89a');
-  R(0, 438, 347, 12, '#c4b89a');
-  R(86, 332, 9, 228, '#c4b89a');
-  R(124, 399, 67, 28, '#b7ac93');
-  R(130, 394, 55, 38, '#b7ac93');
-  R(133, 399, 49, 28, '#8e9388');
-  R(136, 401, 43, 22, '#aec9bc');
-  R(138, 403, 39, 18, '#688e89');
-  for (let n = 0; n < 12; n++) R(139 + rng() * 34, 404 + rng() * 16, 4, 1, '#91b2a6');
-  R(154, 404, 7, 12, '#a5b5a4');
-  R(155, 400, 4, 10, '#d3d7c2');
-  for (const [x, y] of [
-    [53, 369],
-    [99, 389],
-    [208, 369],
-    [270, 390],
-    [189, 432],
-    [69, 452],
-  ])
-    bench(g, x, y);
-  for (let i = 0; i < 13; i++) {
-    const x = 18 + i * 25,
-      y = 349 + (i % 2) * 4;
-    if (i === 3 || i === 9) continue;
-    tree(g, x, y, 0.8);
   }
-  for (const [x, y, s] of [
-    [39, 412, 1.4],
-    [64, 423, 1],
-    [281, 414, 1.2],
-    [323, 406, 1],
-    [29, 486, 1.3],
-    [133, 470, 1],
-    [196, 490, 1.2],
-    [285, 481, 1.4],
-    [339, 503, 1],
-  ])
-    tree(g, x, y, s);
-  for (const [x, y] of [
-    [101, 343],
-    [168, 343],
-    [101, 456],
-    [268, 450],
+  g.lineJoin = g.lineCap = 'round';
+  for (const p of paths) {
+    if (p.kind !== 'tram') line(g, p.points, p.kind === 'pedestrian' ? 12 : 5, '#d2c6ae');
+  }
+  for (const [extra, ink] of [
+    [5, '#a89983'],
+    [3, '#e2d3b7'],
+    [0, '#595e60'],
   ]) {
-    R(x, y, 30, 9, '#586b4d');
-    R(x + 1, y + 1, 28, 6, '#74945d');
-    for (let n = 0; n < 10; n++)
-      R(x + 2 + rng() * 24, y + 1 + rng() * 4, 2, 2, n % 2 ? '#dfad78' : '#c78878');
+    for (const r of roads) {
+      const restricted = r.access === 'no' || r.access === 'private';
+      line(g, r.points, r.width + extra, extra === 0 && restricted ? '#786b64' : ink);
+    }
   }
-  g.restore();
-  drawStreets(g, rng);
-  for (const [x, y, angle] of spawns) {
+  for (const r of roads) {
+    if (r.width >= 30) {
+      g.setLineDash([9, 15]);
+      line(g, r.points, 1, '#c7bfa9');
+      g.setLineDash([]);
+    }
+  }
+  for (const p of paths.filter((p) => p.kind === 'tram')) {
+    line(g, p.points, 7, '#7e7c74');
+    line(g, p.points, 4, '#b8af9f');
+  }
+  for (const c of crosswalks) {
     g.save();
-    g.translate(x, y);
-    g.rotate(angle);
-    R(-15, -7, 30, 20, '#575b5b');
-    R(-15, -8, 30, 1, '#d5c8ad');
-    for (let mark = -14; mark < 14; mark += 7) R(mark, 7, 4, 1, '#b7b7a7');
+    g.translate(c.x, c.y);
+    g.rotate(c.angle);
+    if (c.signal) {
+      for (let y = -c.half + 1; y < c.half; y += 4)
+        for (const x of [-5, 4]) rect(g, x, y, 1, 1, '#dedac9');
+      rect(g, -15, -c.half, 1.5, c.half * 2, '#e4dec8');
+    }
     g.restore();
   }
-  R(363, 255, 2, 23, '#d8d4c4');
-  R(435, 282, 2, 23, '#d8d4c4');
-  R(375, 312, 23, 2, '#d8d4c4');
-  R(402, 235, 23, 2, '#d8d4c4');
-  for (let x = 374; x < 427; x += 5) {
-    R(x, 238, 2, 2, '#d8d4c4');
-    R(x, 246, 2, 2, '#d8d4c4');
+  for (const building of buildings) footprint(g, building, rng);
+  for (const [x, y] of trees) tree(g, x, y, 0.75 + rng() * 0.4);
+
+  // Place street names on their longest segment, with room between labels.
+  const labels = [];
+  for (const road of roads.filter((r) => r.name)) {
+    let longest = 0,
+      anchor;
+    for (let i = 1; i < road.points.length; i++) {
+      const [x, y] = road.points[i - 1],
+        [ex, ey] = road.points[i];
+      const len = Math.hypot(ex - x, ey - y);
+      if (len > longest) {
+        longest = len;
+        anchor = { x: (x + ex) / 2, y: (y + ey) / 2, angle: Math.atan2(ey - y, ex - x) };
+      }
+    }
+    if (longest < road.name.length * 4 + 12) continue;
+    if (
+      labels.some(
+        (p) => Math.hypot(anchor.x - p.x, anchor.y - p.y) < (p.name === road.name ? 200 : 65),
+      )
+    )
+      continue;
+    labels.push({ ...anchor, name: road.name });
+    g.save();
+    g.translate(anchor.x, anchor.y);
+    g.rotate(Math.cos(anchor.angle) < 0 ? anchor.angle + Math.PI : anchor.angle);
+    g.strokeStyle = '#515758';
+    g.lineWidth = 3;
+    g.font = 'bold 7px monospace';
+    g.textAlign = 'center';
+    g.strokeText(road.name.toUpperCase(), 0, 2);
+    label(g, road.name.toUpperCase(), 0, 2, 7, '#ebe2cf');
+    if (road.oneway) {
+      const direction = road.oneway * (Math.cos(anchor.angle) < 0 ? -1 : 1);
+      g.scale(direction, 1);
+      const tip = g.measureText(road.name.toUpperCase()).width / 2 + 9;
+      line(
+        g,
+        [
+          [tip - 5, 0],
+          [tip, 0],
+          [tip - 2, -2],
+        ],
+        1.3,
+        '#ebe2cf',
+      );
+      line(
+        g,
+        [
+          [tip, 0],
+          [tip - 2, 2],
+        ],
+        1.3,
+        '#ebe2cf',
+      );
+    }
+    g.restore();
   }
-  for (const x of [366, 429]) R(x, 238, 5, 10, '#d3b77c');
-  for (const [x, y] of [
-    [321, 260],
-    [477, 300],
-    [380, 177],
-    [417, 373],
-  ]) {
-    R(x, y, 7, 4, '#454e4e');
-    R(x + 1, y + 1, 5, 1, '#727670');
-  }
-  for (const b of buildings) roof(g, b, rng);
-  for (const [x, y] of [
-    [70, 235],
-    [180, 234],
-    [481, 230],
-    [642, 232],
-    [528, 322],
-    [694, 324],
-    [354, 64],
-    [443, 65],
-  ]) {
-    R(x - 6, y - 4, 12, 13, '#8b8876');
-    R(x - 4, y - 2, 8, 9, '#726c58');
-    tree(g, x, y, 0.8);
-  }
-  // Garden entrance plaque, cycle stands and post boxes.
-  R(282, 336, 59, 12, '#4a5c50');
-  R(284, 338, 55, 8, '#647763');
-  label(g, 'PICCADILLY', 312, 344, 7, '#efe0b5');
-  for (let j = 0; j < 4; j++) {
-    R(244 + j * 6, 229, 3, 5, '#66706a');
-    R(245 + j * 6, 230, 1, 4, '#b8b09d');
-  }
-  R(462, 320, 5, 9, '#9e4d3c');
-  R(461, 320, 7, 2, '#be6450');
-  R(463, 323, 3, 1, '#483e38');
-  streetSign(g, gardens.west + 36, gardens.north + 46, ['PICCADILLY', 'MOSLEY ST']);
-  streetSign(g, gardens.west + 42, gardens.south - 35, ['MOSLEY ST', 'PARKER ST']);
-  streetSign(g, gardens.east + 67, gardens.south - 43, ['PARKER ST', 'PORTLAND ST']);
-  streetSign(g, gardens.east - 77, gardens.north + 53, ['PICCADILLY', 'PORTLAND ST']);
+  label(g, 'PICCADILLY GARDENS', 832, 1748, 10, '#495b47');
   return canvas;
 }
 
@@ -341,9 +324,10 @@ function drawGate(g, gate, viewX, viewY, width, height) {
   g.rotate(Math.atan2(gate.dy, gate.dx));
   const finish = gate === gates.at(-1);
   for (let row = 0; row < 2; row++) {
-    for (let n = 0; n < 18; n++) {
+    const count = Math.ceil((gate.halfWidth * 2) / 3);
+    for (let n = 0; n < count; n++) {
       const ink = (n + row) % 2 ? '#27352e' : finish ? '#fff8de' : '#ffcc65';
-      rect(g, row * 3 - 3, n * 3 - gateHalfWidth, 3, 3, ink);
+      rect(g, row * 3 - 3, n * 3 - gate.halfWidth, 3, Math.min(3, gate.halfWidth * 2 - n * 3), ink);
     }
   }
   g.restore();
@@ -404,13 +388,23 @@ export function makeRenderer(canvas) {
     b.drawImage(map, 0, 0);
     const entry = raceEntry(world.race, me);
     if (entry && !entry.withdrawn && entry.elapsed === null && world.race.phase !== 'open') {
+      b.save();
+      b.setLineDash([5, 12]);
+      line(b, [...circuit.points, circuit.points[0]], 1.5, '#efc66b');
+      b.restore();
       drawGate(b, gates[entry.next], x, y, vw, vh);
     }
     const lights = signals(world.time);
-    light(b, 360, 242, lights.horizontal);
-    light(b, 439, 315, lights.horizontal);
-    light(b, 361, 316, lights.vertical);
-    light(b, 436, 227, lights.vertical);
+    for (const c of crosswalks.filter((c) => c.signal)) {
+      for (const side of [-1, 1]) {
+        light(
+          b,
+          c.x - Math.sin(c.angle) * side * (c.half + 3),
+          c.y + Math.cos(c.angle) * side * (c.half + 3),
+          lights.vertical,
+        );
+      }
+    }
     for (const v of world.traffic) car(b, v, false, world.time);
     for (const p of world.people) {
       const stride = Math.floor((p.x + p.y) / 3) % 2;

@@ -26,16 +26,13 @@
       ></canvas>
       <div class="location">
         <span class="pin" aria-hidden="true"></span>
-        <div>
-          <strong>Piccadilly Gardens</strong
-          ><small><span id="street-name">Piccadilly</span> · Manchester</small>
-        </div>
+        <div><strong id="street-name">Piccadilly</strong><small>Manchester city centre</small></div>
       </div>
       <div class="north" aria-label="North is up">N<i></i></div>
       <form id="join">
         <div class="form-title">
           <span class="car-icon" aria-hidden="true">▰</span>
-          <h2>Drive the gardens loop</h2>
+          <h2>Drive Manchester</h2>
         </div>
         <label for="name">Driver name</label>
         <div class="fields">
@@ -47,8 +44,10 @@
           </button>
         </div>
       </form>
-      <section id="race-panel" aria-label="Gardens race" hidden>
-        <div class="race-heading"><strong>Gardens race</strong><span id="race-clock"></span></div>
+      <section id="race-panel" aria-label="Northern Quarter race" hidden>
+        <div class="race-heading">
+          <strong>Northern Quarter race</strong><span id="race-clock"></span>
+        </div>
         <p id="race-status" role="status"></p>
         <div id="race-results"></div>
         <button id="dismiss-results" type="button" hidden>Close results</button>
@@ -75,6 +74,13 @@
         <span><kbd>W</kbd> Accelerate</span><span><kbd>S</kbd> Brake / reverse</span
         ><span><kbd>A</kbd><kbd>D</kbd> Steer</span>
       </div>
+      <a
+        class="attribution"
+        href="https://www.openstreetmap.org/copyright"
+        target="_blank"
+        rel="noopener"
+        >© OpenStreetMap contributors</a
+      >
       <span class="road-mark" aria-hidden="true"></span
       ><span class="mode" id="drive-mode">Free drive</span>
     </footer>

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createWorld, drive, placePlayer, signals, step } from '../public/world.js';
-import { HEIGHT, gardens, streets, streetAt, circuit } from '../public/streets.js';
+import { circuit, circuits, crosswalks, gates, streetAt } from '../public/streets.js';
+import { findRaceGrid } from '../public/world.js';
+import { raceCommand } from '../public/race.js';
 
 const car = (x, y, angle = 0) => ({ id: 'me', x, y, angle, speed: 0 });
 const dt = 1 / 60;
@@ -10,7 +12,7 @@ function hold(player, keys, ticks, others = [], people = []) {
 }
 
 test('braking reaches a standstill before reverse and steering changes direction in reverse', () => {
-  const player = car(160, 280);
+  const player = car(850, 1800);
   hold(player, 1, 45);
   assert.ok(player.speed > 0);
   while (player.speed > 0) drive(player, 2, dt, [], []);
@@ -18,13 +20,13 @@ test('braking reaches a standstill before reverse and steering changes direction
   const stoppedAt = player.x;
   hold(player, 2 | 8, 20);
   assert.ok(player.speed < 0 && player.x < stoppedAt && player.angle < 0);
-  const parked = car(140, 280);
+  const parked = car(830, 1800);
   hold(parked, 4, 20);
   assert.equal(parked.angle, 0);
 });
 
 test('rear lights distinguish coasting, braking and reversing with the same pedal', () => {
-  const player = car(160, 280);
+  const player = car(850, 1800);
   hold(player, 1, 30);
   hold(player, 0, 5);
   assert.equal(player.rearLights, 'tail');
@@ -42,35 +44,48 @@ test('rear lights distinguish coasting, braking and reversing with the same peda
   assert.equal(player.rearLights, 'tail');
 });
 
-test('solid facades and pedestrians stop sustained acceleration and allow reversal', () => {
-  for (const building of [true, false]) {
-    const player = building ? car(300, 250, -Math.PI / 2) : car(150, 280);
-    const people = building ? [] : [{ x: 190, y: 280 }];
-    hold(player, 1, 120, [], people);
-    if (building) assert.ok(player.y >= 231 && player.y < 233);
-    else assert.ok(player.x > 176 && player.x <= 178.3);
-    const { x, y } = player;
-    hold(player, 2, 45, [], people);
-    assert.ok(building ? player.y > y + 5 : player.x < x - 5);
-  }
+// Midpoint and outside normal of the long southeast facade of Afflecks.
+const wall = { x: 1327, y: 1034.5, angle: Math.atan2(62, 75) };
+function byWall(distance, angle) {
+  return car(
+    wall.x + distance * Math.cos(wall.angle),
+    wall.y + distance * Math.sin(wall.angle),
+    angle,
+  );
+}
+function wallDistance(p) {
+  return (p.x - wall.x) * Math.cos(wall.angle) + (p.y - wall.y) * Math.sin(wall.angle);
+}
+test('the mapped Afflecks facade stops a car and permits reversing away', () => {
+  const p = byWall(28, wall.angle + Math.PI);
+  hold(p, 1, 120);
+  assert.ok(wallDistance(p) >= 9.5 && wallDistance(p) < 10);
+  hold(p, 2, 45);
+  assert.ok(wallDistance(p) > 15);
 });
-
-test('a glancing building impact rebounds away while carrying the car along the facade', () => {
-  const player = car(280, 232.8, -Math.PI / 4);
-  player.speed = 105;
-  const x = player.x,
-    y = player.y;
-  hold(player, 0, 8);
-  assert.ok(player.x > x + 5 && player.y > y);
-  assert.ok(Math.abs(player.speed) < 105);
+test('a glancing impact slides along the diagonal facade and rebounds', () => {
+  const p = byWall(10.7, wall.angle - Math.PI * 0.75);
+  const start = { ...p };
+  p.speed = 105;
+  hold(p, 0, 10);
+  assert.ok(wallDistance(p) > wallDistance(start));
+  assert.ok(Math.hypot(p.x - start.x, p.y - start.y) > 6 && p.speed < 105);
 });
-
+test('a pedestrian stops sustained acceleration and allows reversal', () => {
+  const p = car(850, 1800),
+    people = [{ x: 890, y: 1800 }];
+  hold(p, 1, 120, [], people);
+  assert.ok(p.x > 876 && p.x <= 878.3);
+  const x = p.x;
+  hold(p, 2, 45, [], people);
+  assert.ok(p.x < x - 5);
+});
 test('rear-end impacts transfer momentum between drivers and stronger impacts push farther', () => {
   function bump(speed) {
     const world = createWorld(),
       inputs = new Map();
-    const a = { ...car(150, 280), id: 'a', speed },
-      b = { ...car(170, 280), id: 'b' };
+    const a = { ...car(850, 1800), id: 'a', speed },
+      b = { ...car(870, 1800), id: 'b' };
     world.players = [a, b];
     world.traffic = [];
     world.people = [];
@@ -78,173 +93,154 @@ test('rear-end impacts transfer momentum between drivers and stronger impacts pu
       step(world, inputs, dt);
       assert.ok(b.x - a.x >= 19 - 1e-6);
     }
-    assert.ok(a.speed < speed && b.x > 170);
-    return b.x - 170;
+    assert.ok(a.speed < speed && b.x > 870);
+    return b.x - 870;
   }
   assert.ok(bump(100) > bump(25) * 3);
 });
 
-test('a side impact displaces a traffic car and it recovers its lane without snapping', () => {
+function onRoute(vehicle, d, speed = 0) {
+  Object.assign(vehicle, circuits[vehicle.lane].pose(d), { d, speed });
+}
+test('a side impact displaces a waiting traffic car and it recovers its lane', () => {
   const world = createWorld(),
-    inputs = new Map(),
-    npc = world.traffic[0];
-  world.time = 10;
+    npc = world.traffic[0],
+    inputs = new Map();
   world.traffic = [npc];
   world.people = [];
-  Object.assign(npc, { x: 354, d: 354, speed: 0 });
-  const player = { ...car(354, 281, -Math.PI / 2), speed: 105 };
+  onRoute(npc, crosswalks[0].stop);
+  const start = { ...npc },
+    nx = -Math.sin(npc.angle),
+    ny = Math.cos(npc.angle);
+  const player = car(npc.x + nx * 15, npc.y + ny * 15, npc.angle - Math.PI / 2);
+  player.speed = 105;
   world.players = [player];
   step(world, inputs, dt);
-  assert.ok(npc.y < 266);
   world.players = [];
   let maxDisplacement = 0;
   for (let i = 0; i < 240; i++) {
-    const y = npc.y;
+    const previous = { ...npc };
     step(world, inputs, dt);
-    assert.ok(Math.abs(npc.y - y) < 2);
-    maxDisplacement = Math.max(maxDisplacement, 266 - npc.y);
+    assert.ok(Math.hypot(npc.x - previous.x, npc.y - previous.y) < 2);
+    maxDisplacement = Math.max(maxDisplacement, Math.hypot(npc.x - start.x, npc.y - start.y));
   }
-  assert.ok(maxDisplacement > 6 && Math.abs(npc.y - 266) < 1);
+  assert.ok(maxDisplacement > 6 && Math.hypot(npc.x - start.x, npc.y - start.y) < 1);
 });
 
-test('followers brake before a queue, leave a bumper gap and pull away with the leader', () => {
-  // The circuit and through lane share this stretch of Portland Street.
+test('followers brake before a queue, leave a bumper gap and pull away on green', () => {
   const world = createWorld(),
-    inputs = new Map();
-  const lead = world.traffic.find((v) => v.lane === 2);
-  const follower = world.traffic.find((v) => v.lane === 'gardens');
-  Object.assign(lead, { y: 322, d: HEIGHT - 322, speed: 0 });
-  const d = circuit.lights - 85;
-  Object.assign(follower, circuit.pose(d), { d, speed: 40 });
-  world.traffic = [follower, lead];
+    inputs = new Map(),
+    [lead, follower] = world.traffic;
+  world.traffic = [lead, follower];
   world.people = [];
+  const d = crosswalks[0].stop;
+  onRoute(lead, d);
+  onRoute(follower, d - 85, 40);
   let braked = false;
   for (let i = 0; i < 8 * 60; i++) {
     const speed = follower.speed;
     step(world, inputs, dt);
-    const gap = follower.y - lead.y - 19;
-    assert.ok(gap >= 11.99);
-    if (follower.speed < speed - 0.001 && gap > 13) {
-      assert.equal(follower.rearLights, 'brake');
+    assert.ok(lead.d - follower.d >= 30.99);
+    if (follower.speed < speed - 0.001) {
       braked = true;
+      assert.equal(follower.rearLights, 'brake');
     }
   }
-  assert.ok(braked && follower.speed < 0.01);
-  assert.equal(follower.rearLights, 'brake');
-  assert.equal(lead.rearLights, 'brake');
-  assert.ok(Math.abs(follower.y - lead.y - 19 - 12) < 0.01);
-  for (let i = 0; i < 4 * 60; i++) {
-    const speed = follower.speed;
-    step(world, inputs, dt);
-    if (follower.speed > speed + 0.001) assert.equal(follower.rearLights, 'tail');
+  assert.ok(braked && follower.speed < 0.01 && lead.speed === 0);
+  for (let i = 0; i < 4 * 60; i++) step(world, inputs, dt);
+  assert.ok(follower.d > d && follower.speed > 0);
+});
+
+test('eight drivers can join on mapped streets without sharing bays', () => {
+  const w = createWorld();
+  for (let i = 0; i < 8; i++) {
+    const p = placePlayer(String(i), 'Driver', 'red', w);
+    assert.ok(p && w.players.every((q) => Math.hypot(q.x - p.x, q.y - p.y) > 20));
+    assert.match(streetAt(p.x, p.y), /Piccadilly|Street/);
+    w.players.push(p);
   }
-  assert.ok(follower.y < 330 && follower.speed > 0);
 });
 
-test('an occupied starting bay is skipped', () => {
-  const world = createWorld();
-  const a = placePlayer('a', 'A', 'red', world);
-  world.players.push(a);
-  const b = placePlayer('b', 'B', 'blue', world);
-  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > 20);
-});
-
-test('traffic queues on red, clears the junction on green, and a pedestrian crosses during all red', () => {
-  const world = createWorld(),
+test('at a signalised crossing traffic waits on red and the walker crosses on all red', () => {
+  const w = createWorld(),
+    v = w.traffic[0],
+    walker = w.people[0],
+    cross = crosswalks[0],
     inputs = new Map();
-  world.time = 11;
-  const vehicle = world.traffic[0];
-  vehicle.d = 345;
-  vehicle.x = 345;
-  const walker = world.people[0];
-  for (let i = 0; i < 180; i++) step(world, inputs, dt);
-  assert.equal(vehicle.x, 354);
-  assert.equal(walker.x, 359);
+  w.traffic = [v];
+  w.people = [walker];
+  w.time = 17.1;
+  onRoute(v, cross.stop - 5, 30);
+  for (let i = 0; i < 120; i++) step(w, inputs, dt);
+  assert.ok(Math.abs(v.d - cross.stop) < 0.01);
+  assert.equal(walker.next, 1);
+  assert.equal(walker.crossing, false);
   let crossed = false;
-  for (let i = 0; i < 13 * 60; i++) {
-    step(world, inputs, dt);
-    if (walker.x > 373 && walker.x < 427) {
-      const light = signals(world.time);
-      assert.equal(light.horizontal, 'red');
-      assert.equal(light.vertical, 'red');
+  for (let i = 0; i < 18 * 60; i++) {
+    step(w, inputs, dt);
+    if (walker.crossing) {
+      assert.equal(signals(w.time).vertical, 'red');
+      assert.equal(signals(w.time).horizontal, 'red');
       crossed = true;
     }
   }
-  assert.ok(crossed && walker.x > 430);
-  assert.ok(vehicle.x > 430);
+  assert.ok(crossed && v.d > cross.stop + 45);
 });
 
-test('a driver can take four right turns and return to Piccadilly on the road', () => {
-  const player = car(300, 266);
-  const names = new Set();
-  const onRoad = () => {
-    const paved = streets.some((s) => {
-      const along = s.vertical ? player.y - s.y : player.x - s.x;
-      const across = s.vertical ? player.x - s.x : player.y - s.y;
-      return along >= -27 && along <= s.length + 27 && Math.abs(across) <= 27;
-    });
-    assert.ok(paved, 'car left the road at ' + player.x + ', ' + player.y);
-    names.add(streetAt(player.x, player.y));
-  };
-  function travelUntil(reached, steer = 0) {
-    for (let tick = 0; tick < 600; tick++) {
-      if (reached()) return;
-      drive(player, (player.speed < 43 ? 1 : 0) | steer, dt, [], []);
-      onRoad();
-    }
-    assert.fail('did not reach next turn');
-  }
-  const turnTo = (angle) => travelUntil(() => player.angle >= angle, 8);
-  travelUntil(() => player.x >= gardens.east + 14 - 22);
-  turnTo(Math.PI / 2);
-  travelUntil(() => player.y >= gardens.south + 14 - 22);
-  turnTo(Math.PI);
-  travelUntil(() => player.x <= gardens.west - 14 + 22);
-  turnTo((3 * Math.PI) / 2);
-  travelUntil(() => player.y <= gardens.north - 14 + 22);
-  turnTo(2 * Math.PI);
-  travelUntil(() => player.x >= 300);
-  assert.ok(Math.abs(player.y - 266) < 14);
-  for (const name of ['Piccadilly', 'Mosley Street', 'Parker Street', 'Portland Street'])
-    assert.ok(names.has(name));
+test('traffic yields at the unmarked Faraday Street crossing and resumes', () => {
+  const w = createWorld(),
+    v = w.traffic[0],
+    cross = crosswalks[2],
+    inputs = new Map();
+  w.traffic = [v];
+  w.people = [w.people[2]];
+  onRoute(v, cross.stop - 1, 30);
+  for (let i = 0; i < 15; i++) step(w, inputs, dt);
+  assert.ok(Math.abs(v.d - cross.stop) < 0.01);
+  assert.equal(v.rearLights, 'brake');
+  for (let i = 0; i < 150; i++) step(w, inputs, dt);
+  assert.ok(v.d > cross.stop + 15 && v.rearLights === 'tail');
 });
 
-test('circulating traffic signals before turns and completes repeated laps in mixed traffic', () => {
-  const world = createWorld(),
+test('all traffic completes repeated laps through turns, signals and the Faraday merge', () => {
+  const w = createWorld(),
     inputs = new Map(),
-    drivers = world.traffic.filter((v) => v.lane === 'gardens');
-  assert.ok(drivers.length > 0);
-  const laps = new Map(),
-    turned = new Set(),
+    laps = w.traffic.map(() => 0),
     indicated = new Set();
-  for (let i = 0; i < 60 * 160; i++) {
-    const previous = drivers.map((v) => ({ ...v }));
-    step(world, inputs, dt);
-    for (const [j, car] of drivers.entries()) {
-      const prev = previous[j];
-      assert.ok(Math.hypot(car.x - prev.x, car.y - prev.y) < 1);
-      if (car.d < prev.d) laps.set(car.id, (laps.get(car.id) ?? 0) + 1);
-      if (car.indicating && car.angle === prev.angle) indicated.add(car.id);
-      if (Math.abs(Math.sin(car.angle - prev.angle)) > 0.001) {
-        assert.ok(prev.indicating);
-        turned.add(car.id);
-      }
+  for (let i = 0; i < 60 * 360; i++) {
+    const previous = w.traffic.map((v) => ({ ...v }));
+    step(w, inputs, dt);
+    for (const [j, v] of w.traffic.entries()) {
+      const p = previous[j];
+      assert.ok(Math.hypot(p.x - v.x, p.y - v.y) < 1.5);
+      if (v.d < p.d - 100) laps[j]++;
+      if (v.indicating) indicated.add(j);
     }
   }
-  for (const car of drivers)
-    assert.ok(laps.get(car.id) >= 2 && indicated.has(car.id) && turned.has(car.id));
+  assert.ok(laps.every((n) => n >= 2));
+  assert.equal(indicated.size, w.traffic.length);
 });
 
-test('a driver on the loop gives way to the Parker Street pedestrian and resumes', () => {
-  const world = createWorld(),
-    car = world.traffic.find((v) => v.lane === 'gardens');
-  Object.assign(car, circuit.pose(circuit.crossing - 1), { d: circuit.crossing - 1, speed: 35 });
-  const inputs = new Map();
-  for (let i = 0; i < 30; i++) step(world, inputs, dt);
-  assert.equal(car.d, circuit.crossing);
-  assert.equal(car.speed, 0);
-  assert.equal(car.rearLights, 'brake');
-  for (let i = 0; i < 210; i++) step(world, inputs, dt);
-  assert.ok(car.d > circuit.crossing + 12);
-  assert.equal(car.rearLights, 'tail');
+test('two drivers can steer a full lap from the grid through the mapped gates', () => {
+  const w = createWorld(),
+    inputs = new Map();
+  w.traffic = [];
+  w.people = [];
+  for (const id of ['a', 'b']) w.players.push(placePlayer(id, id, 'red', w));
+  raceCommand(w, w.players[0], 'open', null, findRaceGrid);
+  raceCommand(w, w.players[1], 'join', w.race.id, findRaceGrid);
+  for (const g of gates) assert.equal(streetAt(g.x, g.y), g.street);
+  for (let i = 0; i < 60 * 125 && w.race.phase !== 'results'; i++) {
+    for (const [j, p] of w.players.entries()) {
+      const target = circuit.pose(circuit.nearest(p.x, p.y) + 20);
+      const turn = Math.atan2(target.y - p.y, target.x - p.x) - p.angle;
+      const error = Math.atan2(Math.sin(turn), Math.cos(turn));
+      const steer = Math.abs(error) < 0.018 ? 0 : error > 0 ? 8 : 4;
+      inputs.set(p.id, steer | (p.speed < (j === 0 ? 46 : 38) ? 1 : 0));
+    }
+    step(w, inputs, dt);
+  }
+  assert.equal(w.race.phase, 'results');
+  assert.ok(w.race.racers.every((r) => r.next === gates.length && r.elapsed > 0));
+  assert.ok(w.race.racers[0].elapsed < w.race.racers[1].elapsed);
 });

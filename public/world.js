@@ -1,5 +1,15 @@
 // World coordinates are pixels, heading is measured clockwise from east.
-import { WIDTH, HEIGHT, JUNCTION, circuit, gardens, zebra } from './streets.js';
+import {
+  WIDTH,
+  HEIGHT,
+  circuits,
+  circuit,
+  crosswalks,
+  faradayMerge,
+  gridDistance,
+  spawns,
+} from './streets.js';
+import { buildings, garden_walks as gardenWalks } from './manchester-map.js';
 import { checkGate, heldOnGrid } from './race.js';
 export { WIDTH, HEIGHT, JUNCTION } from './streets.js';
 export const COLORS = [
@@ -12,32 +22,6 @@ export const COLORS = [
   '#ddd8be',
   '#e596b3',
 ];
-export const buildings = [
-  { x: 8, y: 30, w: 112, h: 192, brick: '#965c48', roof: '#73655d', name: 'MILL' },
-  { x: 124, y: 64, w: 94, h: 158, brick: '#a46b53', roof: '#968073', name: 'RECORDS' },
-  { x: 228, y: 88, w: 122, h: 134, brick: '#985845', roof: '#766963', name: 'OLDHAM ST' },
-  { x: 449, y: 39, w: 141, h: 179, brick: '#985f49', roof: '#86776a', name: 'TEXTILE HOUSE' },
-  { x: 596, y: 58, w: 189, h: 160, brick: '#ab7660', roof: '#8a7469', name: 'WAREHOUSE' },
-  { x: 449, y: 345, w: 119, h: 177, brick: '#9a624a', roof: '#8c7768', name: 'COFFEE' },
-  { x: 573, y: 345, w: 81, h: 150, brick: '#ac7662', roof: '#746765', name: 'BOOKS' },
-  { x: 663, y: 345, w: 130, h: 179, brick: '#855a49', roof: '#867366', name: 'ARCADE' },
-  { x: 9, y: 636, w: 121, h: 62, brick: '#ad7155', roof: '#807263', name: 'MARKET' },
-  { x: 138, y: 642, w: 88, h: 56, brick: '#95604c', roof: '#776c65', name: 'FLORIST' },
-  { x: 251, y: 637, w: 99, h: 62, brick: '#ab7659', roof: '#907b69', name: 'PARKER HOUSE' },
-  { x: 457, y: 561, w: 131, h: 119, brick: '#966651', roof: '#716860', name: 'PORTLAND MILL' },
-  { x: 601, y: 563, w: 181, h: 128, brick: '#ab725a', roof: '#897765', name: 'PRINT WORKS' },
-];
-export const spawns = [
-  [321, 248, 0],
-  [478, 313, Math.PI],
-  [367, 364, -Math.PI / 2],
-  [433, 181, Math.PI / 2],
-  [258, 248, 0],
-  [550, 313, Math.PI],
-  [367, 423, -Math.PI / 2],
-  [433, 128, Math.PI / 2],
-];
-
 export function signals(time) {
   const t = time % 24;
   const horizontal = t < 7 ? 'green' : t < 9 ? 'amber' : 'red';
@@ -54,7 +38,44 @@ function vehicleBox(v) {
 function personBox(p) {
   return box(p.x, p.y, 0, 2.2, 2.2);
 }
-const walls = buildings.map((b) => box(b.x + b.w / 2, b.y + b.h / 2, 0, b.w / 2, b.h / 2));
+// Index footprint edges, including courtyards, once for both prediction and the server.
+const cells = new Map();
+const cellKey = (x, y) => x + ',' + y;
+for (const { rings } of buildings) {
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const [x, y] = ring[i],
+        [ex, ey] = ring[(i + 1) % ring.length];
+      const length = Math.hypot(ex - x, ey - y);
+      if (!length) continue;
+      const wall = box((x + ex) / 2, (y + ey) / 2, Math.atan2(ey - y, ex - x), length / 2, 0.35);
+      // A car's corner is at most 11 pixels from its centre.
+      for (
+        let cx = Math.floor((Math.min(x, ex) - 12) / 64);
+        cx <= (Math.max(x, ex) + 12) / 64;
+        cx++
+      ) {
+        for (
+          let cy = Math.floor((Math.min(y, ey) - 12) / 64);
+          cy <= (Math.max(y, ey) + 12) / 64;
+          cy++
+        ) {
+          const key = cellKey(cx, cy);
+          if (!cells.has(key)) cells.set(key, []);
+          cells.get(key).push(wall);
+        }
+      }
+    }
+  }
+}
+function wallContact(body) {
+  const walls = cells.get(cellKey(Math.floor(body.x / 64), Math.floor(body.y / 64))) ?? [];
+  for (const wall of walls) {
+    const hit = contact(body, wall);
+    if (hit) return hit;
+  }
+  return null;
+}
 function radius(b, x, y) {
   return Math.abs(x * b.ux + y * b.uy) * b.hx + Math.abs(y * b.ux - x * b.uy) * b.hy;
 }
@@ -96,10 +117,8 @@ function obstacle(v, vehicles, people, bounded) {
     if (v.y < ry) return { nx: 0, ny: -1 };
     if (v.y > HEIGHT - ry) return { nx: 0, ny: 1 };
   }
-  for (const wall of walls) {
-    const hit = contact(body, wall);
-    if (hit) return hit;
-  }
+  const wall = wallContact(body);
+  if (wall) return wall;
   for (const other of vehicles) {
     if (other.id === v.id) continue;
     const hit = contact(body, vehicleBox(other));
@@ -171,8 +190,8 @@ export function findRaceGrid(world, racers) {
     ...world.traffic,
     ...world.players.filter((p) => !racers.some((r) => r.id === p.id)),
   ];
-  for (const x of [310, 278, 246, 214]) {
-    const slots = [262, 276].map((y) => ({ x, y, angle: 0 }));
+  for (const gap of [6, 30, 54, 78]) {
+    const slots = [gap, gap + 24].map((back) => circuit.pose(gridDistance - back));
     if (slots.every((slot) => !obstacle(slot, traffic, world.people, true))) return slots;
   }
   return null;
@@ -216,26 +235,6 @@ export function drive(car, keys, dt, vehicles, people, transferImpulse = true) {
   return car;
 }
 
-const lanes = [
-  { x: 0, y: 266, angle: 0, length: WIDTH, line: 354, signal: 'horizontal' },
-  { x: WIDTH, y: 294, angle: Math.PI, length: WIDTH, line: 354, signal: 'horizontal' },
-  {
-    x: 386,
-    y: HEIGHT,
-    angle: -Math.PI / 2,
-    length: HEIGHT,
-    line: HEIGHT - (JUNCTION.y + 42),
-    signal: 'vertical',
-  },
-  { x: 414, y: 0, angle: Math.PI / 2, length: HEIGHT, line: 226, signal: 'vertical' },
-];
-function onLane(lane, d) {
-  return {
-    x: lane.x + Math.cos(lane.angle) * d,
-    y: lane.y + Math.sin(lane.angle) * d,
-    angle: lane.angle,
-  };
-}
 // Leave daylight between bumpers, with extra headway when the queue is moving.
 const standstillGap = 12,
   headway = 0.65,
@@ -250,8 +249,9 @@ function followTraffic(car, vehicles, limit) {
       dy = leader.y - car.y;
     if (Math.abs(dx) > 110 || Math.abs(dy) > 110) continue;
     let ahead = dx * body.ux + dy * body.uy;
-    if (car.lane === 'gardens' && leader.lane === 'gardens') {
-      ahead = (leader.d - car.d + circuit.length) % circuit.length;
+    const sameRoute = car.lane === leader.lane;
+    if (sameRoute) {
+      ahead = circuits[car.lane].wrap(leader.d - car.d);
       if (ahead > 110) continue;
     } else {
       if (
@@ -262,7 +262,8 @@ function followTraffic(car, vehicles, limit) {
       // Cross traffic follows junction priority; it is not a leader in this lane.
       if (leader.lane !== undefined && body.ux * other.ux + body.uy * other.uy < 0.7) continue;
     }
-    const free = Math.max(0, ahead - body.hx - radius(other, body.ux, body.uy) - standstillGap);
+    const leaderLength = sameRoute ? other.hx : radius(other, body.ux, body.uy);
+    const free = Math.max(0, ahead - body.hx - leaderLength - standstillGap);
     const v = velocity(leader);
     const leadSpeed = Math.max(0, v.x * body.ux + v.y * body.uy);
     travel = Math.min(travel, free);
@@ -274,89 +275,35 @@ function followTraffic(car, vehicles, limit) {
   }
   return { travel, limit };
 }
-const oldhamCrossingRoute = 0,
-  parkerCrossingRoute = 7;
+// Walkers cross at mapped crossing nodes. Other pedestrians follow the paths in the gardens.
 const walks = [
-  [
-    [359, 242],
-    [441, 242],
-    [518, 238],
-    [441, 242],
-    [359, 242],
-    [284, 238],
-  ],
-  [
-    [348, 321],
-    [271, 321],
-    [241, 347],
-    [271, 321],
-  ],
-  [
-    [443, 327],
-    [517, 327],
-    [569, 333],
-    [517, 327],
-  ],
-  [
-    [351, 210],
-    [359, 153],
-    [358, 81],
-    [359, 153],
-  ],
-  [
-    [340, 235],
-    [251, 235],
-    [198, 240],
-    [251, 235],
-  ],
-  [
-    [444, 202],
-    [438, 145],
-    [441, 99],
-    [438, 145],
-  ],
-  [
-    [310, 383],
-    [251, 383],
-    [251, 441],
-    [310, 441],
-  ],
-  [
-    [zebra.x, gardens.south - 39],
-    [zebra.x, gardens.south + 39],
-    [291, gardens.south + 39],
-    [zebra.x, gardens.south + 39],
-    [zebra.x, gardens.south - 39],
-    [185, gardens.south - 39],
-  ],
+  ...crosswalks.map((c) => c.walk),
+  ...gardenWalks.map((points) => [...points, ...points.slice(1, -1).reverse()]),
 ];
-
+const stops = circuits.map((route) =>
+  crosswalks.flatMap((crossing, index) => {
+    const d = route.nearest(crossing.x, crossing.y),
+      p = route.pose(d);
+    if (Math.hypot(p.x - crossing.x, p.y - crossing.y) > crossing.half) return [];
+    return [{ d: d - 16, index }];
+  }),
+);
 export function createWorld() {
-  const traffic = lanes.flatMap((lane, i) =>
-    [0, 1].map((slot) => {
-      const d = slot === 0 ? 44 + i * 18 : lane.length - 92 - i * 11;
+  const traffic = circuits.flatMap((route, lane) => {
+    const count = lane === 0 ? 8 : 3;
+    return Array.from({ length: count }, (_, i) => {
+      const d = (route.length * (i + 0.65)) / count;
       return {
-        id: 't' + i + slot,
-        lane: i,
+        id: 't' + lane + '-' + i,
+        lane,
         d,
-        ...onLane(lane, d),
+        ...route.pose(d),
         speed: 0,
         rearLights: 'tail',
-        color: COLORS[(i * 2 + slot + 1) % 8],
+        color: COLORS[(i + lane) % COLORS.length],
       };
-    }),
-  );
-  for (const [index, d] of [165, circuit.crossing - 64, circuit.lights - 104].entries()) {
-    traffic.push({
-      id: 'loop' + index,
-      lane: 'gardens',
-      d,
-      ...circuit.pose(d),
-      speed: 0,
-      rearLights: 'tail',
-      color: COLORS[index * 2],
     });
-  }
+  });
   const people = walks.map((route, i) => ({
     id: 'p' + i,
     route: i,
@@ -413,7 +360,7 @@ export function step(world, inputs, dt) {
         next.y >= 3 &&
         next.x <= WIDTH - 3 &&
         next.y <= HEIGHT - 3 &&
-        !walls.some((w) => overlap(bounds, w)) &&
+        !wallContact(bounds) &&
         !vehicles.some((v) => overlap(bounds, vehicleBox(v)))
       ) {
         Object.assign(p, next);
@@ -423,15 +370,19 @@ export function step(world, inputs, dt) {
     const route = walks[p.route],
       [tx, ty] = route[p.next];
     const crossLeg = p.next === 1 || p.next === 4;
-    const crosses =
-      (p.route === oldhamCrossingRoute || p.route === parkerCrossingRoute) && crossLeg;
-    if (p.route === oldhamCrossingRoute && crosses && !p.crossing && !lights.walk) continue;
+    const crossing = crosswalks[p.route];
+    const crosses = !!crossing && crossLeg;
+    if (crossing?.signal && crosses && !p.crossing && !lights.walk) continue;
     const dx = tx - p.x,
       dy = ty - p.y,
       distance = Math.hypot(dx, dy);
     const move = Math.min(distance, (crosses ? 29 : 11 + p.route) * dt);
     const next = { x: p.x + (dx * move) / (distance || 1), y: p.y + (dy * move) / (distance || 1) };
-    if (vehicles.some((v) => overlap(personBox(next), vehicleBox(v)))) continue;
+    if (
+      wallContact(personBox(next)) ||
+      vehicles.some((v) => overlap(personBox(next), vehicleBox(v)))
+    )
+      continue;
     Object.assign(p, next);
     p.crossing = crosses;
     if (distance <= move) {
@@ -441,42 +392,34 @@ export function step(world, inputs, dt) {
   }
 
   for (const car of world.traffic) {
-    const lane = lanes[car.lane];
-    const following = followTraffic(car, vehicles, lane ? 38 + car.lane * 2 : 40);
-    let stop = Infinity;
-    if (lane) {
-      const wait =
-        lights[lane.signal] !== 'green' ||
-        (car.lane >= 2 && world.people.some((p) => p.route === oldhamCrossingRoute && p.crossing));
-      if (wait && car.d <= lane.line) stop = lane.line;
-    } else {
-      if (
-        car.d <= circuit.crossing &&
-        world.people.some(
-          (p) => p.route === parkerCrossingRoute && (p.crossing || p.next === 1 || p.next === 4),
-        )
-      )
-        stop = circuit.crossing;
-      // Traffic already travelling north on Portland Street has priority at the merge.
-      if (
-        car.d <= circuit.merge &&
-        vehicles.some(
-          (v) =>
-            v.id !== car.id &&
-            Math.abs(v.x - (gardens.east - 14)) < 10 &&
-            v.y > gardens.south - 4 &&
-            v.y < gardens.south + 86 &&
-            -Math.sin(v.angle) * v.speed > 1,
-        )
-      )
-        stop = Math.min(stop, circuit.merge);
-      if (car.d <= circuit.lights && lights.vertical !== 'green')
-        stop = Math.min(stop, circuit.lights);
+    const route = circuits[car.lane];
+    const following = followTraffic(car, vehicles, 40);
+    let free = following.travel;
+    for (const stop of stops[car.lane]) {
+      const crossing = crosswalks[stop.index];
+      const occupied = world.people.some(
+        (p) =>
+          p.route === stop.index &&
+          (p.crossing || (!crossing.signal && (p.next === 1 || p.next === 4))),
+      );
+      if (occupied || (crossing.signal && lights.vertical !== 'green')) {
+        const distance = stop.d - car.d;
+        if (distance >= -1e-7) free = Math.min(free, Math.max(0, distance));
+      }
     }
-    const free = Math.min(following.travel, stop - car.d);
+    // Give way when turning off Lever to traffic already on Faraday Street.
+    if (
+      car.lane === 0 &&
+      world.traffic.some(
+        (other) => other.lane === 1 && circuits[1].wrap(faradayMerge[1] - other.d + 16) < 80,
+      )
+    ) {
+      const distance = faradayMerge[0] - 26 - car.d;
+      if (distance >= 0) free = Math.min(free, distance);
+    }
     const target = Math.min(following.limit, Math.sqrt(2 * trafficBraking * free));
     const speed = Math.max(car.speed - trafficBraking * dt, Math.min(car.speed + 42 * dt, target));
-    const travel = Math.min(free, speed * dt);
+    const travel = free < 1e-7 ? 0 : Math.min(free, speed * dt);
     const nextSpeed = travel / dt;
     car.rearLights = free < 0.001 || nextSpeed < car.speed - 0.001 ? 'brake' : 'tail';
     dampSlide(car, dt);
@@ -485,26 +428,14 @@ export function step(world, inputs, dt) {
     const ux = Math.cos(car.angle),
       uy = Math.sin(car.angle);
     const along = slideX * ux + slideY * uy;
-    let d = car.d + travel + along;
-    const poseAt = (distance) => (lane ? onLane(lane, distance) : circuit.pose(distance));
-    if (lane && d > lane.length + 14) {
-      const entry = { ...car, ...poseAt(-14), d: -14, speed: 0, slideX: 0, slideY: 0 };
-      if (
-        !obstacle(entry, vehicles, world.people, false) &&
-        followTraffic(entry, vehicles, 40).travel > 0
-      )
-        Object.assign(car, entry);
-      else car.speed = 0;
-      continue;
-    }
-    if (!lane) d = d < 0 ? (d + circuit.length) % circuit.length : d % circuit.length;
-    const origin = poseAt(car.d),
-      next = poseAt(d);
+    const d = route.wrap(car.d + travel + along);
+    const origin = route.pose(car.d),
+      next = route.pose(d);
     // Fold longitudinal impact travel into route progress. Steer lateral displacement
     // back onto the lane gradually so a side impact survives the next AI update.
     const recovery = Math.exp(-1.4 * dt);
     next.x += (car.x - origin.x) * recovery + slideX - along * ux;
     next.y += (car.y - origin.y) * recovery + slideY - along * uy;
-    moveCar(car, { ...car, ...next, d, speed: nextSpeed }, dt, vehicles, world.people, !lane, true);
+    moveCar(car, { ...car, ...next, d, speed: nextSpeed }, dt, vehicles, world.people, true, true);
   }
 }

@@ -468,3 +468,16 @@ kbd {
     top: 48px;
   }
 }
+
+.attribution {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+@media (max-width: 620px) {
+  footer {
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    height: auto;
+    padding-block: 5px;
+  }
+}

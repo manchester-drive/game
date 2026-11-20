@@ -1,14 +1,5 @@
-import { gardens } from './streets.js';
-
-const { east, west, north, south } = gardens;
-export const gates = [
-  { street: 'Portland Street', direction: 'south', x: east, y: north + 72, dx: 0, dy: 1 },
-  { street: 'Parker Street', direction: 'west', x: east - 72, y: south, dx: -1, dy: 0 },
-  { street: 'Mosley Street', direction: 'north', x: west, y: south - 72, dx: 0, dy: -1 },
-  { street: 'Piccadilly', direction: 'east', x: west + 72, y: north, dx: 1, dy: 0 },
-  { street: 'Piccadilly finish', direction: 'east', x: east - 70, y: north, dx: 1, dy: 0 },
-];
-export const gateHalfWidth = 27;
+import { gates } from './streets.js';
+export { gates };
 
 function entrant(player) {
   return { id: player.id, name: player.name, next: 0, elapsed: null, withdrawn: false };
@@ -58,7 +49,6 @@ export function raceCommand(world, player, action, raceId, findGrid) {
     for (const [i, r] of racers.entries()) {
       const car = world.players.find((p) => p.id === r.id);
       Object.assign(car, grid[i], {
-        angle: 0,
         speed: 0,
         slideX: 0,
         slideY: 0,
@@ -86,7 +76,7 @@ export function checkGate(race, car, fromX, fromY, tickStart, dt) {
   const fraction = -before / (after - before);
   const x = fromX + fraction * (car.x - fromX),
     y = fromY + fraction * (car.y - fromY);
-  if (Math.abs((x - g.x) * g.dy - (y - g.y) * g.dx) > gateHalfWidth) return;
+  if (Math.abs((x - g.x) * g.dy - (y - g.y) * g.dx) > g.halfWidth) return;
   entry.next++;
   if (entry.next === gates.length) {
     entry.elapsed = tickStart + fraction * dt - race.startAt;
