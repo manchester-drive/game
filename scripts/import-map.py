@@ -5,7 +5,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-WEST, SOUTH, EAST, NORTH = -2.2400, 53.4794, -2.2317, 53.4843
+WEST, SOUTH, EAST, NORTH = -2.2450, 53.4769, -2.2275, 53.4855
 SCALE = 5  # game pixels per metre
 METRES_LAT = 111_300
 METRES_LON = METRES_LAT * math.cos(math.radians((NORTH + SOUTH) / 2))

@@ -29,6 +29,7 @@
         <div><strong id="street-name">Piccadilly</strong><small>Manchester city centre</small></div>
       </div>
       <div class="north" aria-label="North is up">N<i></i></div>
+      <button id="camera" type="button" aria-controls="map">Free cam</button>
       <form id="join">
         <div class="form-title">
           <span class="car-icon" aria-hidden="true">▰</span>
@@ -70,10 +71,11 @@
       </div>
     </main>
     <footer>
-      <div class="bindings">
+      <div class="bindings" id="driving-keys">
         <span><kbd>W</kbd> Accelerate</span><span><kbd>S</kbd> Brake / reverse</span
         ><span><kbd>A</kbd><kbd>D</kbd> Steer</span>
       </div>
+      <div class="bindings" id="camera-keys" hidden>Drag to pan · WASD or arrow keys</div>
       <a
         class="attribution"
         href="https://www.openstreetmap.org/copyright"

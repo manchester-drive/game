@@ -136,86 +136,7 @@ function footprint(g, building, rng) {
   g.restore();
 }
 
-function terrain() {
-  const canvas = document.createElement('canvas');
-  canvas.width = WIDTH;
-  canvas.height = HEIGHT;
-  const g = canvas.getContext('2d'),
-    rng = random(418);
-  rect(g, 0, 0, WIDTH, HEIGHT, '#bfb39e');
-  for (let y = 0; y < HEIGHT; y += 9) {
-    for (let x = -12 + (y % 2) * 12; x < WIDTH; x += 24)
-      rect(g, x, y, 23, 8, rng() > 0.5 ? '#c3b7a2' : '#bbae99');
-  }
-  const fills = { gardens: '#96a181', green: '#82966f', plaza: '#cbbdab', water: '#789a9c' };
-  for (const kind of Object.keys(fills)) {
-    for (const area of areas.filter((a) => a.kind === kind)) {
-      g.beginPath();
-      outline(g, area.points, true);
-      g.fillStyle = fills[kind];
-      g.fill();
-      if (kind !== 'plaza') {
-        g.save();
-        g.clip();
-        const xs = area.points.map(([x]) => x),
-          ys = area.points.map(([, y]) => y);
-        const x = Math.min(...xs),
-          y = Math.min(...ys);
-        const w = Math.max(...xs) - x,
-          h = Math.max(...ys) - y;
-        for (let i = 0; i < (w * h) / 80; i++) {
-          rect(
-            g,
-            x + rng() * w,
-            y + rng() * h,
-            kind === 'water' ? 5 : 2,
-            1,
-            kind === 'water' ? '#a5c2ba' : '#647b533a',
-          );
-        }
-        g.restore();
-      }
-    }
-  }
-  g.lineJoin = g.lineCap = 'round';
-  for (const p of paths) {
-    if (p.kind !== 'tram') line(g, p.points, p.kind === 'pedestrian' ? 12 : 5, '#d2c6ae');
-  }
-  for (const [extra, ink] of [
-    [5, '#a89983'],
-    [3, '#e2d3b7'],
-    [0, '#595e60'],
-  ]) {
-    for (const r of roads) {
-      const restricted = r.access === 'no' || r.access === 'private';
-      line(g, r.points, r.width + extra, extra === 0 && restricted ? '#786b64' : ink);
-    }
-  }
-  for (const r of roads) {
-    if (r.width >= 30) {
-      g.setLineDash([9, 15]);
-      line(g, r.points, 1, '#c7bfa9');
-      g.setLineDash([]);
-    }
-  }
-  for (const p of paths.filter((p) => p.kind === 'tram')) {
-    line(g, p.points, 7, '#7e7c74');
-    line(g, p.points, 4, '#b8af9f');
-  }
-  for (const c of crosswalks) {
-    g.save();
-    g.translate(c.x, c.y);
-    g.rotate(c.angle);
-    if (c.signal) {
-      for (let y = -c.half + 1; y < c.half; y += 4)
-        for (const x of [-5, 4]) rect(g, x, y, 1, 1, '#dedac9');
-      rect(g, -15, -c.half, 1.5, c.half * 2, '#e4dec8');
-    }
-    g.restore();
-  }
-  for (const building of buildings) footprint(g, building, rng);
-  for (const [x, y] of trees) tree(g, x, y, 0.75 + rng() * 0.4);
-
+function streetLabels() {
   // Place street names on their longest segment, with room between labels.
   const labels = [];
   for (const road of roads.filter((r) => r.name)) {
@@ -237,7 +158,104 @@ function terrain() {
       )
     )
       continue;
-    labels.push({ ...anchor, name: road.name });
+    labels.push({ ...anchor, name: road.name, oneway: road.oneway });
+  }
+  return labels;
+}
+
+const tileSize = 720;
+function terrainTile(left, top, tile) {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.min(tileSize, WIDTH - left);
+  canvas.height = Math.min(tileSize, HEIGHT - top);
+  const g = canvas.getContext('2d', { alpha: false }),
+    rng = random(418 + left + top * WIDTH);
+  g.translate(-left, -top);
+  rect(g, left, top, canvas.width, canvas.height, '#bfb39e');
+  for (let y = top; y < top + canvas.height; y += 9) {
+    for (let x = left - 12 + (y % 2) * 12; x < left + canvas.width; x += 24)
+      rect(
+        g,
+        x,
+        y,
+        23,
+        8,
+        (Math.imul(x + 1, 73856093) ^ Math.imul(y + 1, 19349663)) & 256 ? '#c3b7a2' : '#bbae99',
+      );
+  }
+  const fills = { gardens: '#96a181', green: '#82966f', plaza: '#cbbdab', water: '#789a9c' };
+  for (const kind of Object.keys(fills)) {
+    for (const area of tile.areas.filter((a) => a.kind === kind)) {
+      g.beginPath();
+      outline(g, area.points, true);
+      g.fillStyle = fills[kind];
+      g.fill();
+      if (kind !== 'plaza') {
+        g.save();
+        g.clip();
+        const xs = area.points.map(([x]) => x),
+          ys = area.points.map(([, y]) => y);
+        const x = Math.max(left, Math.min(...xs)),
+          y = Math.max(top, Math.min(...ys));
+        const w = Math.max(0, Math.min(left + canvas.width, Math.max(...xs)) - x);
+        const h = Math.max(0, Math.min(top + canvas.height, Math.max(...ys)) - y);
+        for (let i = 0; i < (w * h) / 80; i++) {
+          rect(
+            g,
+            x + rng() * w,
+            y + rng() * h,
+            kind === 'water' ? 5 : 2,
+            1,
+            kind === 'water' ? '#a5c2ba' : '#647b533a',
+          );
+        }
+        g.restore();
+      }
+    }
+  }
+  g.lineJoin = g.lineCap = 'round';
+  for (const p of tile.paths) {
+    if (p.kind !== 'tram') line(g, p.points, p.kind === 'pedestrian' ? 12 : 5, '#d2c6ae');
+  }
+  for (const [extra, ink] of [
+    [5, '#a89983'],
+    [3, '#e2d3b7'],
+    [0, '#595e60'],
+  ]) {
+    for (const r of tile.roads) {
+      const restricted = r.access === 'no' || r.access === 'private';
+      line(g, r.points, r.width + extra, extra === 0 && restricted ? '#786b64' : ink);
+    }
+  }
+  for (const r of tile.roads) {
+    if (r.width >= 30) {
+      g.setLineDash([9, 15]);
+      line(g, r.points, 1, '#c7bfa9');
+      g.setLineDash([]);
+    }
+  }
+  for (const p of tile.paths.filter((p) => p.kind === 'tram')) {
+    line(g, p.points, 7, '#7e7c74');
+    line(g, p.points, 4, '#b8af9f');
+  }
+  for (const c of tile.crosswalks) {
+    g.save();
+    g.translate(c.x, c.y);
+    g.rotate(c.angle);
+    if (c.signal) {
+      for (let y = -c.half + 1; y < c.half; y += 4)
+        for (const x of [-5, 4]) rect(g, x, y, 1, 1, '#dedac9');
+      rect(g, -15, -c.half, 1.5, c.half * 2, '#e4dec8');
+    }
+    g.restore();
+  }
+  for (const building of tile.buildings) {
+    const [x, y] = building.rings[0][0];
+    footprint(g, building, random(x + y * WIDTH));
+  }
+  for (const [x, y] of tile.trees) tree(g, x, y, 0.75 + random(x + y * WIDTH)() * 0.4);
+
+  for (const anchor of tile.labels) {
     g.save();
     g.translate(anchor.x, anchor.y);
     g.rotate(Math.cos(anchor.angle) < 0 ? anchor.angle + Math.PI : anchor.angle);
@@ -245,12 +263,12 @@ function terrain() {
     g.lineWidth = 3;
     g.font = 'bold 7px monospace';
     g.textAlign = 'center';
-    g.strokeText(road.name.toUpperCase(), 0, 2);
-    label(g, road.name.toUpperCase(), 0, 2, 7, '#ebe2cf');
-    if (road.oneway) {
-      const direction = road.oneway * (Math.cos(anchor.angle) < 0 ? -1 : 1);
+    g.strokeText(anchor.name.toUpperCase(), 0, 2);
+    label(g, anchor.name.toUpperCase(), 0, 2, 7, '#ebe2cf');
+    if (anchor.oneway) {
+      const direction = anchor.oneway * (Math.cos(anchor.angle) < 0 ? -1 : 1);
       g.scale(direction, 1);
-      const tip = g.measureText(road.name.toUpperCase()).width / 2 + 9;
+      const tip = g.measureText(anchor.name.toUpperCase()).width / 2 + 9;
       line(
         g,
         [
@@ -273,8 +291,69 @@ function terrain() {
     }
     g.restore();
   }
-  label(g, 'PICCADILLY GARDENS', 832, 1748, 10, '#495b47');
+  label(g, 'PICCADILLY GARDENS', gardenLabel.x, gardenLabel.y, 10, '#495b47');
   return canvas;
+}
+
+// Render the visible part of the city at full pixel-art resolution. A footprint
+// or label straddling a tile edge is drawn in both tiles in world coordinates.
+const gardenPoints = areas.find((area) => area.kind === 'gardens').points;
+const gardenLabel = {
+  x: gardenPoints.reduce((sum, p) => sum + p[0], 0) / gardenPoints.length,
+  y: gardenPoints.reduce((sum, p) => sum + p[1], 0) / gardenPoints.length,
+};
+function makeTerrain() {
+  const columns = Math.ceil(WIDTH / tileSize);
+  const tiles = Array.from({ length: columns * Math.ceil(HEIGHT / tileSize) }, () => ({
+    areas: [],
+    roads: [],
+    paths: [],
+    buildings: [],
+    trees: [],
+    crosswalks: [],
+    labels: [],
+  }));
+  function index(layer, feature, points, padding) {
+    const xs = points.map((p) => p[0]),
+      ys = points.map((p) => p[1]);
+    const x0 = Math.max(0, Math.floor((Math.min(...xs) - padding) / tileSize));
+    const y0 = Math.max(0, Math.floor((Math.min(...ys) - padding) / tileSize));
+    const x1 = Math.min(columns - 1, Math.floor((Math.max(...xs) + padding) / tileSize));
+    const y1 = Math.min(
+      Math.ceil(HEIGHT / tileSize) - 1,
+      Math.floor((Math.max(...ys) + padding) / tileSize),
+    );
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) tiles[y * columns + x][layer].push(feature);
+  }
+  for (const r of roads) index('roads', r, r.points, r.width / 2 + 4);
+  for (const p of paths) index('paths', p, p.points, 8);
+  for (const a of areas) index('areas', a, a.points, 1);
+  for (const b of buildings) index('buildings', b, b.rings.flat(), 3);
+  for (const t of trees) index('trees', t, [t], 20);
+  for (const c of crosswalks) index('crosswalks', c, [[c.x, c.y]], c.half + 20);
+  for (const l of streetLabels()) index('labels', l, [[l.x, l.y]], l.name.length * 3 + 12);
+  const cache = new Map();
+  return (g, left, top, width, height) => {
+    const x0 = Math.floor(left / tileSize),
+      x1 = Math.floor((left + width - 1) / tileSize);
+    const y0 = Math.floor(top / tileSize),
+      y1 = Math.floor((top + height - 1) / tileSize);
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        const key = y * columns + x;
+        const canvas = cache.get(key) ?? terrainTile(x * tileSize, y * tileSize, tiles[key]);
+        cache.delete(key);
+        cache.set(key, canvas);
+        g.drawImage(canvas, x * tileSize, y * tileSize);
+      }
+    const limit = Math.max(12, (x1 - x0 + 1) * (y1 - y0 + 1));
+    while (cache.size > limit) {
+      const key = cache.keys().next().value;
+      cache.get(key).width = 0;
+      cache.delete(key);
+    }
+  };
 }
 
 function car(g, v, local, time) {
@@ -361,8 +440,16 @@ function light(g, x, y, state) {
     rect(g, x, y - 4 + i * 3, 2, 2, state === s ? c : '#575b4f');
 }
 
+export function viewport(canvas) {
+  const zoom = Math.max(1.7, canvas.clientWidth / WIDTH, canvas.clientHeight / HEIGHT);
+  return {
+    width: Math.min(WIDTH, Math.ceil(canvas.clientWidth / zoom)),
+    height: Math.min(HEIGHT, Math.ceil(canvas.clientHeight / zoom)),
+  };
+}
+
 export function makeRenderer(canvas) {
-  const map = terrain(),
+  const paintTerrain = makeTerrain(),
     g = canvas.getContext('2d', { alpha: false });
   const buffer = document.createElement('canvas'),
     b = buffer.getContext('2d', { alpha: false });
@@ -375,9 +462,7 @@ export function makeRenderer(canvas) {
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
     }
-    const zoom = Math.max(1.7, w / WIDTH, h / HEIGHT);
-    const vw = Math.min(WIDTH, Math.ceil(w / zoom)),
-      vh = Math.min(HEIGHT, Math.ceil(h / zoom));
+    const { width: vw, height: vh } = viewport(canvas);
     if (buffer.width !== vw || buffer.height !== vh) {
       buffer.width = vw;
       buffer.height = vh;
@@ -385,7 +470,7 @@ export function makeRenderer(canvas) {
     const x = Math.round(Math.max(0, Math.min(WIDTH - vw, focus.x - vw / 2)));
     const y = Math.round(Math.max(0, Math.min(HEIGHT - vh, focus.y - vh / 2)));
     b.setTransform(1, 0, 0, 1, -x, -y);
-    b.drawImage(map, 0, 0);
+    paintTerrain(b, x, y, vw, vh);
     const entry = raceEntry(world.race, me);
     if (entry && !entry.withdrawn && entry.elapsed === null && world.race.phase !== 'open') {
       b.save();

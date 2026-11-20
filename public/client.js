@@ -1,10 +1,11 @@
 import { gates, heldOnGrid, raceEntry } from './race.js';
-import { streetAt } from './streets.js';
-import { makeRenderer } from './art.js';
+import { HEIGHT, WIDTH, streetAt } from './streets.js';
+import { makeRenderer, viewport } from './art.js';
 import { createWorld, drive, JUNCTION } from './world.js';
 
 const el = (id) => document.getElementById(id);
-const render = makeRenderer(el('map')),
+const map = el('map');
+const render = makeRenderer(map),
   initial = createWorld();
 const keyBits = { KeyW: 1, KeyS: 2, KeyA: 4, KeyD: 8 };
 let session = null,
@@ -15,6 +16,19 @@ let session = null,
 let frames = [],
   predicted = null,
   connected = false;
+let freeCam = false;
+const panKeys = new Set();
+const panDirections = {
+  KeyW: [0, -1],
+  ArrowUp: [0, -1],
+  KeyS: [0, 1],
+  ArrowDown: [0, 1],
+  KeyA: [-1, 0],
+  ArrowLeft: [-1, 0],
+  KeyD: [1, 0],
+  ArrowRight: [1, 0],
+};
+let drag = null;
 let focus = { ...JUNCTION },
   lastDraw = performance.now();
 const bee = el('bee').getContext('2d');
@@ -44,9 +58,13 @@ function notice(message) {
   el('notice').hidden = !message;
 }
 function updateUI() {
-  el('join').hidden = !!session;
-  el('dash').hidden = !session;
-  el('touch').hidden = !session;
+  el('join').hidden = !!session || freeCam;
+  el('dash').hidden = !session || freeCam;
+  el('touch').hidden = !session || freeCam;
+  el('camera').textContent = freeCam ? (session ? 'Return to car' : 'Back to start') : 'Free cam';
+  el('camera').disabled = busy;
+  el('driving-keys').hidden = freeCam;
+  el('camera-keys').hidden = !freeCam;
   el('start').disabled = busy || !connected;
   el('network').textContent = connected ? 'Live' : 'Connecting';
   el('network').classList.toggle('live', connected);
@@ -68,7 +86,11 @@ function updateRaceUI(state) {
   const race = state?.race,
     entry = raceEntry(race, session?.id);
   const active = entry && entry.elapsed === null && !entry.withdrawn;
-  el('drive-mode').textContent = active && race.phase !== 'open' ? 'One-lap race' : 'Free drive';
+  el('drive-mode').textContent = freeCam
+    ? 'Free cam'
+    : active && race.phase !== 'open'
+      ? 'One-lap race'
+      : 'Free drive';
   const button = el('race-action');
   let action = '',
     caption = 'Race in progress';
@@ -86,7 +108,8 @@ function updateRaceUI(state) {
   button.dataset.action = action;
   button.dataset.raceId = race?.id ?? '';
   button.disabled = !action || raceBusy || !connected;
-  const visible = session && race && (entry || race.phase === 'open') && dismissedRace !== race.id;
+  const visible =
+    !freeCam && session && race && (entry || race.phase === 'open') && dismissedRace !== race.id;
   el('race-panel').hidden = !visible;
   if (!visible) return;
   let status,
@@ -210,6 +233,11 @@ el('leave').onclick = async () => {
   }
 };
 function release() {
+  panKeys.clear();
+  if (drag) {
+    if (map.hasPointerCapture(drag.id)) map.releasePointerCapture(drag.id);
+    drag = null;
+  }
   if (!keyboard && !touch) return;
   keyboard = touch = 0;
   document.querySelectorAll('.touch button').forEach((b) => b.classList.remove('active'));
@@ -222,10 +250,52 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => {
   if (session) navigator.sendBeacon('/leave', JSON.stringify({ token: session.token }));
 });
+function moveCamera(dx = 0, dy = 0) {
+  const view = viewport(map);
+  focus.x = Math.max(view.width / 2, Math.min(WIDTH - view.width / 2, focus.x + dx));
+  focus.y = Math.max(view.height / 2, Math.min(HEIGHT - view.height / 2, focus.y + dy));
+}
+function toggleCamera() {
+  release();
+  freeCam = !freeCam;
+  map.classList.toggle('free-cam', freeCam);
+  if (freeCam) moveCamera();
+  else Object.assign(focus, session && predicted ? predicted : JUNCTION);
+  updateUI();
+}
+el('camera').onclick = toggleCamera;
+map.addEventListener('pointerdown', (event) => {
+  if (!freeCam || !event.isPrimary || event.button !== 0) return;
+  map.setPointerCapture(event.pointerId);
+  drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+});
+map.addEventListener('pointermove', (event) => {
+  if (!drag || drag.id !== event.pointerId) return;
+  const view = viewport(map);
+  moveCamera(
+    ((drag.x - event.clientX) * view.width) / map.clientWidth,
+    ((drag.y - event.clientY) * view.height) / map.clientHeight,
+  );
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+});
+map.addEventListener('lostpointercapture', (event) => {
+  if (drag?.id === event.pointerId) drag = null;
+});
 for (const type of ['keydown', 'keyup'])
   window.addEventListener(type, (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (freeCam) {
+      if (event.code === 'Escape' && type === 'keydown') toggleCamera();
+      else if (Object.hasOwn(panDirections, event.code)) {
+        event.preventDefault();
+        if (type === 'keyup') panKeys.delete(event.code);
+        else if (!event.repeat) panKeys.add(event.code);
+      }
+      return;
+    }
     const bit = keyBits[event.code];
-    if (!session || !bit || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!session || !bit || (type === 'keydown' && event.repeat)) return;
     event.preventDefault();
     const next = type === 'keydown' ? keyboard | bit : keyboard & ~bit;
     if (next !== keyboard) {
@@ -328,13 +398,24 @@ function draw(now) {
     el('gear').textContent =
       Math.abs(predicted.speed) < 0.8 ? 'N' : predicted.speed > 0 ? 'D' : 'R';
   }
-  const target = session && predicted ? predicted : JUNCTION;
-  const street = streetAt(target.x, target.y);
+  if (freeCam) {
+    let dx = 0,
+      dy = 0;
+    for (const key of panKeys) {
+      dx += panDirections[key][0];
+      dy += panDirections[key][1];
+    }
+    const distance = (520 * dt) / (Math.hypot(dx, dy) || 1);
+    moveCamera(dx * distance, dy * distance);
+  } else {
+    const target = session && predicted ? predicted : JUNCTION;
+    focus.x += (target.x - focus.x) * (1 - Math.exp(-5 * dt));
+    focus.y += (target.y - focus.y) * (1 - Math.exp(-5 * dt));
+  }
+  const street = streetAt(focus.x, focus.y);
   const streetLabel = el('street-name');
   if (streetLabel.textContent !== street) streetLabel.textContent = street;
-  focus.x += (target.x - focus.x) * (1 - Math.exp(-5 * dt));
-  focus.y += (target.y - focus.y) * (1 - Math.exp(-5 * dt));
-  render(world, session?.id, focus);
+  render(world, freeCam ? undefined : session?.id, focus);
   requestAnimationFrame(draw);
 }
 requestAnimationFrame(draw);

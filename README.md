@@ -1,6 +1,6 @@
 # Manchester Drive
 
-Drive through Piccadilly Gardens and several blocks of the Northern Quarter on streets drawn from OpenStreetMap. One Node process hosts the map for up to eight drivers. Cars, traffic signals and pedestrians are shared between browsers.
+Drive through Piccadilly Gardens, the Northern Quarter and the surrounding city centre on streets drawn from OpenStreetMap. One Node process hosts the map for up to eight drivers. Cars, traffic signals and pedestrians are shared between browsers.
 
 ## Play
 
@@ -11,6 +11,8 @@ npm start
 ```
 
 Open [the game](http://127.0.0.1:4173) in two browser windows, enter different driver names and select **Drive** in each. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. **Leave car** frees your place in the room.
+
+Select **Free cam** to explore before joining or while driving. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. Spectators can explore without claiming a driver slot. If you already have a car, it coasts while the camera is detached.
 
 Brake lights brighten red as drivers slow down. NPCs hold them on while waiting at lights, in queues, or at a crossing. Hold **S** while moving forward to brake, then keep holding it to reverse with white rear lights.
 
@@ -50,14 +52,14 @@ Cars collide with the edges of mapped building footprints, other vehicles, pedes
 
 ## Map data
 
-The bundled map covers approximately 550 by 545 metres, north up, at five game pixels per metre. Roads, building outlines, trees, paths and tram tracks come from a local OpenStreetMap extract retrieved on 20 November 2026. Where a road lacks a mapped width, the importer estimates it from the lane count or street type. Both the browser and server read the same asset. Playing requires no map service or API key.
+The bundled map covers approximately 1.16 by 0.96 kilometres, north up, at five game pixels per metre. Roads, building outlines, trees, paths and tram tracks come from a local OpenStreetMap extract retrieved on 20 November 2026. Where a road lacks a mapped width, the importer estimates it from the lane count or street type. Both the browser and server read the same asset. Playing requires no map service or API key.
 
 Map data © OpenStreetMap contributors. The derived database is distributed under the Open Database License 1.0 in [public/manchester-map.js](public/manchester-map.js). [OpenStreetMap copyright](https://www.openstreetmap.org/copyright) · [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/)
 
 To refresh the map, download the surrounding area and run the importer with Python 3.9 or later. The download includes a margin so that buildings and streets crossing the playable boundary have complete geometry.
 
 ```fish
-curl --fail --location 'https://api.openstreetmap.org/api/0.6/map?bbox=-2.2428,53.4790,-2.2314,53.4865' -o /tmp/manchester-centre.osm
+curl --fail --location 'https://api.openstreetmap.org/api/0.6/map?bbox=-2.2463,53.4760,-2.2262,53.4865' -o /tmp/manchester-centre.osm
 python3 scripts/import-map.py /tmp/manchester-centre.osm
 npm test
 ```

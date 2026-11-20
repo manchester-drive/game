@@ -6,13 +6,15 @@ import { findRaceGrid } from '../public/world.js';
 import { raceCommand } from '../public/race.js';
 
 const car = (x, y, angle = 0) => ({ id: 'me', x, y, angle, speed: 0 });
+// Open ground in Piccadilly Gardens for straight-line driving checks.
+const straight = { x: 2506, y: 2468 };
 const dt = 1 / 60;
 function hold(player, keys, ticks, others = [], people = []) {
   for (let i = 0; i < ticks; i++) drive(player, keys, dt, others, people);
 }
 
 test('braking reaches a standstill before reverse and steering changes direction in reverse', () => {
-  const player = car(850, 1800);
+  const player = car(straight.x, straight.y);
   hold(player, 1, 45);
   assert.ok(player.speed > 0);
   while (player.speed > 0) drive(player, 2, dt, [], []);
@@ -20,13 +22,13 @@ test('braking reaches a standstill before reverse and steering changes direction
   const stoppedAt = player.x;
   hold(player, 2 | 8, 20);
   assert.ok(player.speed < 0 && player.x < stoppedAt && player.angle < 0);
-  const parked = car(830, 1800);
+  const parked = car(straight.x - 20, straight.y);
   hold(parked, 4, 20);
   assert.equal(parked.angle, 0);
 });
 
 test('rear lights distinguish coasting, braking and reversing with the same pedal', () => {
-  const player = car(850, 1800);
+  const player = car(straight.x, straight.y);
   hold(player, 1, 30);
   hold(player, 0, 5);
   assert.equal(player.rearLights, 'tail');
@@ -45,7 +47,7 @@ test('rear lights distinguish coasting, braking and reversing with the same peda
 });
 
 // Midpoint and outside normal of the long southeast facade of Afflecks.
-const wall = { x: 1327, y: 1034.5, angle: Math.atan2(62, 75) };
+const wall = { x: 2983, y: 1702.5, angle: Math.atan2(62, 75) };
 function byWall(distance, angle) {
   return car(
     wall.x + distance * Math.cos(wall.angle),
@@ -72,10 +74,10 @@ test('a glancing impact slides along the diagonal facade and rebounds', () => {
   assert.ok(Math.hypot(p.x - start.x, p.y - start.y) > 6 && p.speed < 105);
 });
 test('a pedestrian stops sustained acceleration and allows reversal', () => {
-  const p = car(850, 1800),
-    people = [{ x: 890, y: 1800 }];
+  const p = car(straight.x, straight.y),
+    people = [{ x: straight.x + 40, y: straight.y }];
   hold(p, 1, 120, [], people);
-  assert.ok(p.x > 876 && p.x <= 878.3);
+  assert.ok(p.x > people[0].x - 14 && p.x <= people[0].x - 11.7);
   const x = p.x;
   hold(p, 2, 45, [], people);
   assert.ok(p.x < x - 5);
@@ -84,8 +86,9 @@ test('rear-end impacts transfer momentum between drivers and stronger impacts pu
   function bump(speed) {
     const world = createWorld(),
       inputs = new Map();
-    const a = { ...car(850, 1800), id: 'a', speed },
-      b = { ...car(870, 1800), id: 'b' };
+    const a = { ...car(straight.x, straight.y), id: 'a', speed },
+      b = { ...car(straight.x + 20, straight.y), id: 'b' };
+    const parkedX = b.x;
     world.players = [a, b];
     world.traffic = [];
     world.people = [];
@@ -93,8 +96,8 @@ test('rear-end impacts transfer momentum between drivers and stronger impacts pu
       step(world, inputs, dt);
       assert.ok(b.x - a.x >= 19 - 1e-6);
     }
-    assert.ok(a.speed < speed && b.x > 870);
-    return b.x - 870;
+    assert.ok(a.speed < speed && b.x > parkedX);
+    return b.x - parkedX;
   }
   assert.ok(bump(100) > bump(25) * 3);
 });

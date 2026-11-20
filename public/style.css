@@ -481,3 +481,26 @@ kbd {
     padding-block: 5px;
   }
 }
+
+#camera {
+  position: absolute;
+  top: 75px;
+  right: clamp(12px, 2.3vw, 32px);
+  height: 34px;
+  padding: 0 11px;
+  color: var(--paper);
+  background: var(--ink);
+  border-color: #758173;
+}
+#map.free-cam {
+  touch-action: none;
+  cursor: grab;
+}
+#map.free-cam:active {
+  cursor: grabbing;
+}
+@media (max-width: 620px), (max-height: 450px) {
+  #camera {
+    top: 58px;
+  }
+}
