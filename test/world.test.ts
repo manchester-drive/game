@@ -1,10 +1,10 @@
-import type { Position, Player, Vehicle, TrafficCar } from '../public/game-types';
-import { appearance } from '../public/garage';
+import type { Position, Player, Vehicle, TrafficCar } from '../src/game/game-types';
+import { appearance } from '../src/game/garage';
 import { expect, test } from 'bun:test';
-import { createWorld, drive, placePlayer, signals, step } from '../public/world';
-import { circuit, circuits, crosswalks, gates, streetAt } from '../public/streets';
-import { findRaceGrid } from '../public/world';
-import { raceCommand } from '../public/race';
+import { createWorld, drive, placePlayer, signals, step } from '../src/game/world';
+import { circuit, circuits, crosswalks, gates, streetAt } from '../src/game/streets';
+import { findRaceGrid } from '../src/game/world';
+import { raceCommand } from '../src/game/race';
 
 const car = (x: number, y: number, angle = 0): Player => ({
   id: 'me',

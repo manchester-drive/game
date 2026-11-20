@@ -1,22 +1,12 @@
-import type { Credentials, Player, Position, World } from './game-types';
-import type { Commands } from './protocol';
-import { gates, heldOnGrid, raceEntry } from './race';
-import { HEIGHT, WIDTH, streetAt } from './streets';
-import { drawGarage, makeRenderer, viewport } from './art';
-import { createWorld, drive, walk, roadUsers, JUNCTION } from './world';
+import type { Player, Position, World } from '../game/game-types';
+import { heldOnGrid } from '../game/race';
+import { HEIGHT, WIDTH, streetAt } from '../game/streets';
+import { createWorld, drive, walk, roadUsers, JUNCTION } from '../game/world';
+import type { Credentials } from '../protocol/commands';
+import { el, notice, outfit, setupGarage, updateHud } from './hud';
+import { leaveOnPageHide, post, subscribeToWorld } from './network';
+import { makeRenderer, viewport } from './renderer';
 
-import { appearance, models, jackets, skinTones } from './garage';
-
-function el(id: 'bee' | 'map' | 'garage-preview'): HTMLCanvasElement;
-function el(id: 'model' | 'jacket' | 'skin'): HTMLSelectElement;
-function el(id: 'name'): HTMLInputElement;
-function el(id: 'camera' | 'door' | 'start' | 'race-action'): HTMLButtonElement;
-function el(id: string): HTMLElement;
-function el(id: string): HTMLElement {
-  const element = document.getElementById(id);
-  if (!element) throw new Error('Missing game element ' + id);
-  return element;
-}
 const map = el('map');
 const render = makeRenderer(map),
   initial = createWorld();
@@ -44,207 +34,34 @@ const panDirections: Record<string, [number, number]> = {
 let drag: { id: number; x: number; y: number } | null = null;
 let focus = { ...JUNCTION },
   lastDraw = performance.now();
-const bee = el('bee').getContext('2d')!;
-const sprite = [
-  '..ww..ww.......',
-  '..wWwwWw.......',
-  '...wwww........',
-  '..yy.bbyybb....',
-  '.yyy.bbyybb.yy.',
-  'yyyy.bbyybb.yby',
-  '.yyy.bbyybb.yy.',
-  '..yy.bbyybb....',
-  '....b..b..b....',
-  '...bb..b..bb...',
-];
-const beeColors: Record<string, string> = {
-  w: '#a3b8ac',
-  W: '#e3e8d5',
-  y: '#f5c66c',
-  b: '#6b6953',
-};
-for (let y = 0; y < sprite.length; y++)
-  for (let x = 0; x < sprite[y].length; x++) {
-    const c = beeColors[sprite[y][x]];
-    if (c) {
-      bee.fillStyle = c;
-      bee.fillRect(x + 4, y + 5, 1, 1);
-    }
-  }
-
-for (const [id, palette] of [
-  ['model', models],
-  ['jacket', jackets],
-  ['skin', skinTones],
-] as const) {
-  for (const [key, value] of Object.entries(palette)) {
-    el(id).add(
-      new Option(typeof value === 'string' ? key[0].toUpperCase() + key.slice(1) : value.name, key),
-    );
-  }
-  el(id).onchange = refreshPreview;
-}
-function outfit() {
-  return appearance({
-    model: el('model').value,
-    jacket: el('jacket').value,
-    skin: el('skin').value,
-  });
-}
-function refreshPreview() {
-  drawGarage(el('garage-preview'), outfit());
-}
-el('skin').value = 'tan';
-refreshPreview();
-
-function notice(message: string) {
-  el('notice').textContent = message;
-  el('notice').hidden = !message;
-}
-const walkingButtons: Record<number, [string, string]> = {
-  1: ['▲', 'Walk north'],
-  2: ['▼', 'Walk south'],
-  4: ['◀', 'Walk west'],
-  8: ['▶', 'Walk east'],
-};
-const drivingButtons: Record<number, [string, string]> = {
-  1: ['W', 'Accelerate'],
-  2: ['S', 'Brake or reverse'],
-  4: ['◀', 'Steer left'],
-  8: ['▶', 'Steer right'],
-};
-let doorBusy = false;
-function updateUI() {
-  const onFoot = !!predicted?.parkedCar;
-  el('join').hidden = !!session || freeCam;
-  el('dash').hidden = !session || freeCam;
-  el('touch').hidden = !session || freeCam;
-  el('camera').textContent = freeCam
-    ? session
-      ? onFoot
-        ? 'Return to player'
-        : 'Return to car'
-      : 'Back to start'
-    : 'Free cam';
-  el('camera').disabled = busy;
-  el('driving-keys').hidden = freeCam || onFoot;
-  el('walking-keys').hidden = freeCam || !onFoot;
-  el('readout').hidden = onFoot;
-  el('car-location').hidden = !onFoot;
-  el('race-action').hidden = onFoot;
-  el('leave').hidden = !session;
-  const race = frames.at(-1)?.state.race,
-    entry = raceEntry(race, session?.id);
-  el('door').textContent = onFoot
-    ? 'Enter car'
-    : entry && !entry.withdrawn && entry.elapsed === null
-      ? 'Exit car & race'
-      : 'Get out';
-  el('door').disabled = !connected || !predicted || doorBusy;
-  for (const button of document.querySelectorAll<HTMLButtonElement>('.touch button')) {
-    const [caption, label] = (onFoot ? walkingButtons : drivingButtons)[Number(button.dataset.bit)];
-    button.textContent = caption;
-    button.setAttribute('aria-label', label);
-  }
-  el('camera-keys').hidden = !freeCam;
-  el('start').disabled = busy || !connected;
-  el('network').textContent = connected ? 'Live' : 'Connecting';
-  el('network').classList.toggle('live', connected);
-  updateRaceUI(frames.at(-1)?.state);
-}
-let raceBusy = false,
+let doorBusy = false,
+  raceBusy = false,
   dismissedRace: string | undefined;
-function lapTime(seconds: number) {
-  const ms = Math.floor(Math.max(0, seconds) * 1000);
-  return (
-    Math.floor(ms / 60000) +
-    ':' +
-    String(Math.floor(ms / 1000) % 60).padStart(2, '0') +
-    '.' +
-    String(ms % 1000).padStart(3, '0')
-  );
-}
-function updateRaceUI(state?: World) {
-  const race = state?.race,
-    entry = raceEntry(race, session?.id);
-  const active = entry && entry.elapsed === null && !entry.withdrawn;
-  el('drive-mode').textContent = freeCam
-    ? 'Free cam'
-    : active && race?.phase !== 'open'
-      ? 'One-lap race'
-      : predicted?.parkedCar
-        ? 'On foot'
-        : 'Free drive';
-  const button = el('race-action');
-  let action = '',
-    caption = 'Race in progress';
-  if (!race || race.phase === 'results') {
-    action = 'open';
-    caption = entry ? 'Race again' : 'Open race';
-  } else if (active) {
-    action = 'withdraw';
-    caption = race.phase === 'open' ? 'Cancel race' : 'Leave race';
-  } else if (race.phase === 'open') {
-    action = 'join';
-    caption = 'Join race';
-  }
-  button.textContent = caption;
-  button.dataset.action = action;
-  button.dataset.raceId = race?.id ?? '';
-  button.disabled = !action || raceBusy || !connected;
-  const visible =
-    !freeCam && session && race && (entry || race.phase === 'open') && dismissedRace !== race.id;
-  el('race-panel').hidden = !visible;
-  if (!visible || !state) return;
-  let status = '',
-    clock = '',
-    results = '';
-  if (race.phase === 'open')
-    status = entry
-      ? 'Waiting for a second driver on Piccadilly.'
-      : race.racers[0].name + ' opened a race on Piccadilly.';
-  else if (race.phase === 'countdown') {
-    status = 'On the grid · Get ready';
-    clock = String(Math.max(1, Math.ceil(race.startAt! - state.time)));
-  } else if (entry) {
-    if (race.phase === 'results') status = 'Final results';
-    else if (entry.withdrawn) status = 'You left the race';
-    else if (entry.elapsed !== null) status = 'Finished · Waiting for the other driver';
-    else {
-      const gate = gates[entry.next];
-      const prefix =
-        entry.next === gates.length - 1
-          ? 'Finish'
-          : 'Gate ' + (entry.next + 1) + '/' + (gates.length - 1);
-      status = prefix + ' · ' + gate.street + ' (' + gate.direction + ')';
-      const elapsed = state.time - race.startAt!;
-      clock = elapsed < 0.8 ? 'GO!' : lapTime(elapsed);
-    }
-    if (entry.elapsed !== null) clock = lapTime(entry.elapsed);
-    if (race.racers.some((r) => r.elapsed !== null || r.withdrawn))
-      results = race.racers
-        .map((r, i) =>
-          r.elapsed !== null
-            ? i + 1 + '. ' + r.name + '   ' + lapTime(r.elapsed)
-            : r.name + '   ' + (r.withdrawn ? 'DNF' : 'Racing'),
-        )
-        .join('\n');
-  }
-  if (el('race-status').textContent !== status) el('race-status').textContent = status;
-  el('race-clock').textContent = clock;
-  el('race-results').textContent = results;
-  el('dismiss-results').hidden = race.phase !== 'results';
+setupGarage();
+
+function updateUI() {
+  updateHud({
+    world: frames.at(-1)?.state,
+    playerId: session?.id,
+    predicted,
+    freeCam,
+    connected,
+    busy,
+    doorBusy,
+    raceBusy,
+    dismissedRace,
+  });
 }
 el('dismiss-results').onclick = () => {
   dismissedRace = frames.at(-1)?.state.race?.id;
-  updateRaceUI(frames.at(-1)?.state);
+  updateUI();
 };
 el('race-action').onclick = async () => {
   if (!session || raceBusy) return;
   const { action, raceId } = el('race-action').dataset;
   if (action !== 'open' && action !== 'join' && action !== 'withdraw') return;
   raceBusy = true;
-  updateRaceUI(frames.at(-1)?.state);
+  updateUI();
   notice('');
   try {
     const response = await post('/race', { token: session.token, action, raceId: raceId || null });
@@ -253,7 +70,7 @@ el('race-action').onclick = async () => {
     notice('Could not reach the race. Try again.');
   } finally {
     raceBusy = false;
-    updateRaceUI(frames.at(-1)?.state);
+    updateUI();
   }
 };
 function reset() {
@@ -264,23 +81,6 @@ function reset() {
     .querySelectorAll<HTMLButtonElement>('.touch button')
     .forEach((b) => b.classList.remove('active'));
   updateUI();
-}
-type Reply<T> =
-  { ok: true; status: number; data: T } | { ok: false; status: number; error: string };
-async function post<P extends keyof Commands>(
-  path: P,
-  data: Commands[P],
-): Promise<Reply<P extends '/join' ? Credentials : object>> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const body = (await response.json()) as { error: string };
-    return { ok: false, status: response.status, error: body.error };
-  }
-  return { ok: true, status: response.status, data: await response.json() };
 }
 async function sendInput() {
   if (!session || doorBusy) return;
@@ -372,7 +172,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) release();
 });
 window.addEventListener('pagehide', () => {
-  if (session) navigator.sendBeacon('/leave', JSON.stringify({ token: session.token }));
+  if (session) leaveOnPageHide(session.token);
 });
 function moveCamera(dx = 0, dy = 0) {
   const view = viewport(map);
@@ -451,24 +251,23 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('.touch button
 }
 setInterval(sendInput, 900);
 
-const events = new EventSource('/events');
-events.onerror = () => {
-  connected = false;
-  frames = [];
-  release();
-  updateUI();
-};
-events.onmessage = (event) => {
-  const state: World = JSON.parse(event.data),
-    now = performance.now();
-  connected = true;
-  frames.push({ state, now });
-  if (frames.length > 6) frames.shift();
-  const player = state.players.find((p) => p.id === session?.id);
-  if (player) predicted = { ...player };
-  el('count').textContent = state.players.length + ' / 8 players';
-  updateUI();
-};
+subscribeToWorld(
+  (state) => {
+    connected = true;
+    frames.push({ state, now: performance.now() });
+    if (frames.length > 6) frames.shift();
+    const player = state.players.find((p) => p.id === session?.id);
+    if (player) predicted = { ...player };
+    el('count').textContent = state.players.length + ' / 8 players';
+    updateUI();
+  },
+  () => {
+    connected = false;
+    frames = [];
+    release();
+    updateUI();
+  },
+);
 
 function interpolate<T extends Position & { id: string; angle?: number; parkedCar?: unknown }>(
   list: T[],

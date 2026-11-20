@@ -1,7 +1,7 @@
-import type { Player, Race, World } from '../public/game-types';
+import type { Player, Race, World } from '../src/game/game-types';
 import { expect, test } from 'bun:test';
-import { gates, checkGate, raceCommand, withdraw } from '../public/race';
-import { createWorld, findRaceGrid, placePlayer, step } from '../public/world';
+import { gates, checkGate, raceCommand, withdraw } from '../src/game/race';
+import { createWorld, findRaceGrid, placePlayer, step } from '../src/game/world';
 
 function room() {
   const world = createWorld();

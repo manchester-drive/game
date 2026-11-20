@@ -50,7 +50,16 @@ For a playtest, start together on Piccadilly, split up at Lever Street and meet 
 
 ## Implementation
 
-Bun serves and bundles the HTML, TypeScript and CSS. Hono routes multiplayer commands, and Zod validates their payloads. The client and server share the TypeScript world model and simulation.
+The game runs as one Bun application. Its source is organised by responsibility.
+
+| Directory | Responsibility |
+| --- | --- |
+| `src/client/` | Browser entry point, controls, camera, HUD, canvas rendering and network client |
+| `src/game/` | World simulation, physics, races, garage choices and the generated Manchester map shared by client and server |
+| `src/protocol/` | Command schemas, join credentials and the world snapshot format |
+| `src/server/` | The live game room, Hono command routes and Bun HTTP and event-stream handling |
+
+The HTTP routes validate incoming commands and pass them to the room. The room owns player sessions, input ordering and simulation time. It can run directly in a test with a controlled clock.
 
 The server advances the world at 60 simulation steps per second and broadcasts snapshots over Server-Sent Events at 15 Hz. Each browser sends sequenced control changes over HTTP, predicts its own car between snapshots and interpolates other road users. A lost heartbeat releases the controls and eventually removes the car. The shared room lasts for the lifetime of the server.
 
@@ -60,7 +69,7 @@ Cars and walkers collide with buildings, vehicles, other players and the edge of
 
 The bundled map covers approximately 1.16 by 0.96 kilometres, north up, at five game pixels per metre. Roads, building outlines, trees, paths and tram tracks come from a local OpenStreetMap extract retrieved on 20 November 2026. Where a road lacks a mapped width, the importer estimates it from the lane count or street type. Both the browser and server read the same asset. Playing requires no map service or API key.
 
-Map data © OpenStreetMap contributors. The derived database is distributed under the Open Database License 1.0 in [public/manchester-map.ts](public/manchester-map.ts). [OpenStreetMap copyright](https://www.openstreetmap.org/copyright) · [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/)
+Map data © OpenStreetMap contributors. The derived database is distributed under the Open Database License 1.0 in [src/game/manchester-map.ts](src/game/manchester-map.ts). [OpenStreetMap copyright](https://www.openstreetmap.org/copyright) · [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/)
 
 To refresh the map, download the surrounding area and run the importer with Python 3.9 or later. The download includes a margin so that buildings and streets crossing the playable boundary have complete geometry.
 

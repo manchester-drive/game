@@ -54,7 +54,3 @@ export interface World {
   people: Pedestrian[];
   race: Race | null;
 }
-export interface Credentials {
-  id: string;
-  token: string;
-}

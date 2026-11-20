@@ -214,7 +214,7 @@ def convert(source):
 
 if __name__ == "__main__":
     data = convert(sys.argv[1])
-    output = Path(__file__).resolve().parents[1] / "public" / "manchester-map.ts"
+    output = Path(__file__).resolve().parents[1] / "src" / "game" / "manchester-map.ts"
     with output.open("w") as f:
         f.write("// Map data © OpenStreetMap contributors: https://www.openstreetmap.org/copyright\n")
         f.write("// ODbL 1.0: https://opendatacommons.org/licenses/odbl/1-0/\n")

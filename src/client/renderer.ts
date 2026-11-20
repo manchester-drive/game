@@ -1,12 +1,12 @@
-import type { MapData, Point } from './map-types';
-import type { Appearance } from './garage';
-import type { Player, Pedestrian, Pose, Position, Vehicle, World } from './game-types';
-import type { StreetObject } from './streets';
-import { gates, raceEntry } from './race';
-import { circuit, crosswalks, streetObjects, WIDTH, HEIGHT } from './streets';
-import { buildings, roads, paths, areas } from './manchester-map';
-import { jackets, models, skinTones } from './garage';
-import { signals } from './world';
+import type { MapData, Point } from '../game/map-types';
+import type { Appearance } from '../game/garage';
+import type { Player, Pedestrian, Pose, Position, Vehicle, World } from '../game/game-types';
+import type { StreetObject } from '../game/streets';
+import { gates, raceEntry } from '../game/race';
+import { circuit, crosswalks, streetObjects, WIDTH, HEIGHT } from '../game/streets';
+import { buildings, roads, paths, areas } from '../game/manchester-map';
+import { jackets, models, skinTones } from '../game/garage';
+import { signals } from '../game/world';
 
 type Context = CanvasRenderingContext2D;
 type Label = Pose & { name: string; oneway: number };

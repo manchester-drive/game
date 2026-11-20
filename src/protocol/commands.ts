@@ -1,6 +1,10 @@
 import { z } from 'zod';
-import type { Appearance } from './garage';
-import type { Credentials } from './game-types';
+import type { Appearance } from '../game/garage';
+
+export interface Credentials {
+  id: string;
+  token: string;
+}
 
 export const inputCommand = z.object({
   seq: z.int(),
@@ -12,6 +16,10 @@ export const raceCommandBody = z.object({
   action: z.enum(['open', 'join', 'withdraw']),
   raceId: z.string().nullable(),
 });
+
+export type InputCommand = z.output<typeof inputCommand>;
+export type DoorCommand = z.output<typeof doorCommand>;
+export type RaceCommand = z.output<typeof raceCommandBody>;
 
 type Token = Pick<Credentials, 'token'>;
 export interface Commands {

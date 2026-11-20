@@ -1,7 +1,7 @@
-import type { GarageOptions } from '../public/garage';
-import type { Vehicle } from '../public/game-types';
+import type { GarageOptions } from '../src/game/garage';
+import type { Vehicle } from '../src/game/game-types';
 import { expect, test } from 'bun:test';
-import { furniture, trees } from '../public/manchester-map';
+import { furniture, trees } from '../src/game/manchester-map';
 import {
   createWorld,
   drive,
@@ -11,8 +11,8 @@ import {
   step,
   useCar,
   walk,
-} from '../public/world';
-import { raceCommand } from '../public/race';
+} from '../src/game/world';
+import { raceCommand } from '../src/game/race';
 
 const dt = 1 / 60;
 function room(options: GarageOptions = {}) {

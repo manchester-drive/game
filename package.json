@@ -4,9 +4,9 @@
   "type": "module",
   "packageManager": "bun@1.4.4",
   "scripts": {
-    "dev": "NODE_ENV=development bun --watch server.ts",
-    "start": "bun server.ts",
-    "build": "bun build --compile --production --minify server.ts --outfile dist/manchester-drive",
+    "dev": "NODE_ENV=development bun --watch src/server/index.ts",
+    "start": "bun src/server/index.ts",
+    "build": "bun build --compile --production --minify src/server/index.ts --outfile dist/manchester-drive",
     "typecheck": "bun --bun tsc --noEmit",
     "test": "bun test"
   },

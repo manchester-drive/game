@@ -1,6 +1,7 @@
 import { expect, test, onTestFinished } from 'bun:test';
-import type { Credentials, World } from '../public/game-types';
-import { createGameServer } from '../server';
+import type { Credentials } from '../src/protocol/commands';
+import type { World } from '../src/game/game-types';
+import { createGameServer } from '../src/server';
 
 test('two clients share the same authoritative cars and controls belong to their driver', async () => {
   const server = createGameServer({ hostname: '127.0.0.1', port: 0 });
