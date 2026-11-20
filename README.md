@@ -1,6 +1,6 @@
 # Manchester Drive
 
-Drive through Piccadilly Gardens, the Northern Quarter and the surrounding city centre on streets drawn from OpenStreetMap. One Bun process hosts the map for up to eight players. Cars, traffic signals and pedestrians are shared between browsers.
+Start at Piccadilly Gardens and explore Greater Manchester as far as the M60 on streets drawn from OpenStreetMap. One Bun process hosts the map for up to eight players. Cars, traffic signals and pedestrians are shared between browsers.
 
 ## Play
 
@@ -67,16 +67,29 @@ Cars and walkers collide with buildings, vehicles, other players and the edge of
 
 ## Map data
 
-The bundled map covers approximately 1.16 by 0.96 kilometres, north up, at five game pixels per metre. Roads, building outlines, trees, paths and tram tracks come from a local OpenStreetMap extract retrieved on 20 November 2026. Where a road lacks a mapped width, the importer estimates it from the lane count or street type. Both the browser and server read the same asset. Playing requires no map service or API key.
+The playable area covers about 202.5 km² inside and along the M60, north up at five game pixels per metre. The boundary follows the mapped motorway and its connecting ramps, with a shoulder outside the carriageways so you can drive the orbital. Traffic and the checkpoint race run around Piccadilly Gardens and the Northern Quarter.
 
-Map data © OpenStreetMap contributors. The derived database is distributed under the Open Database License 1.0 in [src/game/manchester-map.ts](src/game/manchester-map.ts). [OpenStreetMap copyright](https://www.openstreetmap.org/copyright) · [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/)
+Street geometry, buildings, paths, trees, tram tracks, parks and water come from OpenStreetMap. The importer keeps individual carriageways, motorway links and pedestrianised streets. It uses mapped widths where available and estimates the rest from lanes and street class. The renderer uses mapped road layers at bridges and tunnels. Driving physics remain two-dimensional.
 
-To refresh the map, download the surrounding area and run the importer with Python 3.9 or later. The download includes a margin so that buildings and streets crossing the playable boundary have complete geometry.
+The starting district is bundled with the game. Elsewhere the browser requests 288-metre map squares from the game server as you explore. The server uses the same squares for collisions. The production executable embeds the map and play requires no external map service or API key.
+
+Map data © OpenStreetMap contributors. The derived database consists of the [starting district](src/game/manchester-map.ts) and the [regional archive, index and boundary](src/game/map), distributed under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). [OpenStreetMap copyright](https://www.openstreetmap.org/copyright)
+
+### Refresh the map
+
+The central XML extract was retrieved on 20 November 2026. Its importer checks that selected race and traffic route ways connect and permit travel in the chosen direction. If a mapper splits a way or changes access, review the affected legs before refreshing.
 
 ```fish
 curl --fail --location 'https://api.openstreetmap.org/api/0.6/map?bbox=-2.2463,53.4760,-2.2262,53.4865' -o /tmp/manchester-centre.osm
 python3 scripts/import-map.py /tmp/manchester-centre.osm
-bun test
 ```
 
-The importer checks that the selected route ways connect and permit travel in the chosen direction. If a mapper splits a way or changes access, review the affected legs before refreshing the bundled map.
+The regional archive uses the 19 November 2026 OpenStreetMap snapshot. To refresh it, download Geofabrik’s Greater Manchester PBF and run the regional importer. Python and the two import libraries are only needed for regeneration. [Geofabrik extract](https://download.geofabrik.de/europe/united-kingdom/england/greater-manchester/index.html)
+
+```fish
+python3 -m venv /tmp/manchester-map-tools
+/tmp/manchester-map-tools/bin/pip install osmium==4.3.2 shapely==2.0.7
+curl --fail --location 'https://download.geofabrik.de/europe/united-kingdom/england/greater-manchester/greater-manchester-latest.osm.pbf' -o /tmp/greater-manchester.osm.pbf
+/tmp/manchester-map-tools/bin/python scripts/import-region.py /tmp/greater-manchester.osm.pbf
+bun test
+```

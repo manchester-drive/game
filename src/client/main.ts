@@ -1,12 +1,15 @@
 import type { Player, Position, World } from '../game/game-types';
 import { heldOnGrid } from '../game/race';
-import { HEIGHT, WIDTH, streetAt } from '../game/streets';
+import { clampToM60, mapChunk } from '../game/region';
+import { useBrowserMap } from './map';
+import { streetAt } from '../game/streets';
 import { createWorld, drive, walk, roadUsers, JUNCTION } from '../game/world';
 import type { Credentials } from '../protocol/commands';
 import { el, notice, outfit, setupGarage, updateHud } from './hud';
 import { leaveOnPageHide, post, subscribeToWorld } from './network';
 import { makeRenderer, viewport } from './renderer';
 
+useBrowserMap();
 const map = el('map');
 const render = makeRenderer(map),
   initial = createWorld();
@@ -175,9 +178,7 @@ window.addEventListener('pagehide', () => {
   if (session) leaveOnPageHide(session.token);
 });
 function moveCamera(dx = 0, dy = 0) {
-  const view = viewport(map);
-  focus.x = Math.max(view.width / 2, Math.min(WIDTH - view.width / 2, focus.x + dx));
-  focus.y = Math.max(view.height / 2, Math.min(HEIGHT - view.height / 2, focus.y + dy));
+  Object.assign(focus, clampToM60(focus.x + dx, focus.y + dy));
 }
 function toggleCamera() {
   release();
@@ -313,15 +314,16 @@ function draw(now: number) {
   if (predicted && session && connected) {
     const latest = frames.at(-1)!.state;
     const { vehicles, people } = roadUsers(latest);
+    const terrainReady = !!mapChunk(predicted.x, predicted.y);
     if (predicted.parkedCar) {
-      walk(predicted, keyboard | touch, dt, vehicles, people);
+      if (terrainReady) walk(predicted, keyboard | touch, dt, vehicles, people);
       const dx = predicted.parkedCar.x - predicted.x,
         dy = predicted.parkedCar.y - predicted.y;
       const directions = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
       const heading = directions[(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8];
       el('car-location').textContent =
         'Car · ' + Math.round(Math.hypot(dx, dy) / 5) + ' m ' + heading;
-    } else if (!heldOnGrid(latest.race, session.id)) {
+    } else if (terrainReady && !heldOnGrid(latest.race, session.id)) {
       drive(predicted, keyboard | touch, dt, vehicles, people, false);
     }
     // Predict the local pose, but render the same lamp signals spectators receive.

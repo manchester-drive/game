@@ -1,18 +1,10 @@
 """Convert an OSM API map XML extract into the shared, offline game map."""
 import json
-import math
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-WEST, SOUTH, EAST, NORTH = -2.2450, 53.4769, -2.2275, 53.4855
-SCALE = 5  # game pixels per metre
-METRES_LAT = 111_300
-METRES_LON = METRES_LAT * math.cos(math.radians((NORTH + SOUTH) / 2))
-WIDTH = round((EAST - WEST) * METRES_LON * SCALE)
-HEIGHT = round((NORTH - SOUTH) * METRES_LAT * SCALE)
-CAR_ROADS = set("primary secondary tertiary unclassified residential living_street service".split())
-PATHS = set("footway pedestrian path steps cycleway".split())
+from map_geometry import CAR_ROADS, PATHS, WIDTH, HEIGHT, car_access, mapped_path, road, xy
 
 # Each leg follows the named OSM way from the preceding node to the given exit.
 GARDENS_START = 889326225
@@ -39,34 +31,12 @@ def tags(element):
 
 
 def project(node):
-    return [round((float(node.get("lon")) - WEST) * METRES_LON * SCALE),
-            round((NORTH - float(node.get("lat"))) * METRES_LAT * SCALE)]
+    return xy(float(node.get("lon")), float(node.get("lat")))
 
 
 def in_view(points):
     return (min(x for x, y in points) <= WIDTH and max(x for x, y in points) >= 0
             and min(y for x, y in points) <= HEIGHT and max(y for x, y in points) >= 0)
-
-
-def car_access(t):
-    return next((t[k] for k in ("motorcar", "motor_vehicle", "vehicle", "access") if k in t), "yes")
-
-
-def road_width(t):
-    try:
-        return float(t["width"].removesuffix(" m"))
-    except (KeyError, ValueError):
-        pass
-    if t.get("lanes", "").isdigit():
-        return max(4.2, 3.2 * int(t["lanes"]))
-    if t["highway"] in ("service", "living_street"):
-        return 4
-    # The narrow Little Lever Street carriageway runs between warehouse facades.
-    if t.get("name") == "Little Lever Street":
-        return 4
-    if t["highway"] == "residential":
-        return 4.8 if t.get("oneway") == "yes" else 5.6
-    return 6.4
 
 
 def assemble_rings(parts):
@@ -118,9 +88,11 @@ def convert(source):
 
     for wid, (refs, t) in ways.items():
         points = [nodes[n] for n in refs]
-        if len(points) < 2 or not in_view(points) or int(t.get("layer", "0").split(";")[0] or 0) < 0:
+        if len(points) < 2 or not in_view(points):
             continue
         highway = t.get("highway")
+        if t.get("layer", "0").startswith("-") and highway not in CAR_ROADS:
+            continue
         if wid not in used_members and refs[0] == refs[-1] and "building" in t and t["building"] not in ("no", "roof"):
             buildings.append(dict(name=t.get("name", ""), rings=[points[:-1]]))
         elif refs[0] == refs[-1] and wid not in used_members:
@@ -134,11 +106,9 @@ def convert(source):
             if kind:
                 areas.append(dict(kind=kind, points=points[:-1]))
         if highway in CAR_ROADS and t.get("area") != "yes":
-            roads.append(dict(id=wid, name=t.get("name", ""), width=round(road_width(t)*SCALE),
-                              oneway={"yes": 1, "1": 1, "-1": -1}.get(t.get("oneway"), 0),
-                              access=car_access(t), points=points))
+            roads.append(road(wid, t, points))
         elif (highway in PATHS or t.get("railway") == "tram") and t.get("area") != "yes" and not t.get("indoor"):
-            paths.append(dict(kind=t.get("railway", highway), points=points))
+            paths.append(mapped_path(t, points))
 
     road_ids = {r["id"] for r in roads}
     def route(start, legs):

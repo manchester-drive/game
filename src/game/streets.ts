@@ -1,8 +1,11 @@
+import { boundary, mapChunk, namedStreets, type MapChunk, type NamedStreet } from './region';
 import type { FurnitureKind, Point, Road, RouteLeg } from './map-types';
-import { areas, crossings, furniture, height, roads, routes, trees, width } from './manchester-map';
+import { areas, crossings, furniture, roads, routes, trees, width } from './manchester-map';
 
-export const WIDTH = width,
-  HEIGHT = height;
+const xs = boundary.map(([x]) => x),
+  ys = boundary.map(([, y]) => y);
+export const WIDTH = Math.max(...xs) - Math.min(...xs);
+export const HEIGHT = Math.max(...ys) - Math.min(...ys);
 const byId = new Map(roads.map((road) => [road.id, road]));
 
 function segment(a: Point, b: Point) {
@@ -14,14 +17,15 @@ function segment(a: Point, b: Point) {
 function project(x: number, y: number, s: ReturnType<typeof segment>) {
   return Math.max(0, Math.min(s.length, (x - s.a[0]) * s.dx + (y - s.a[1]) * s.dy));
 }
-const streetSegments = roads
-  .filter((r) => r.name)
-  .flatMap((road) =>
+function namedSegments(chunk: MapChunk) {
+  return namedStreets(chunk).flatMap((road) =>
     road.points
       .slice(1)
       .map((p, i) => ({ ...segment(road.points[i], p), road }))
       .filter((s) => s.length),
   );
+}
+const segmentsByChunk = new WeakMap<MapChunk, ReturnType<typeof namedSegments>>();
 const gardens = areas.find((a) => a.kind === 'gardens')!.points;
 function inGardens(x: number, y: number) {
   let inside = false;
@@ -33,8 +37,15 @@ function inGardens(x: number, y: number) {
   return inside;
 }
 export function streetAt(x: number, y: number) {
-  let best = Infinity,
-    nearest = streetSegments[0].road;
+  const chunk = mapChunk(x, y);
+  if (!chunk) return 'Loading map…';
+  let streetSegments = segmentsByChunk.get(chunk);
+  if (!streetSegments) {
+    streetSegments = namedSegments(chunk);
+    segmentsByChunk.set(chunk, streetSegments);
+  }
+  let best = Infinity;
+  let nearest: NamedStreet | undefined;
   for (const s of streetSegments) {
     const along = project(x, y, s);
     const distance = (x - s.a[0] - along * s.dx) ** 2 + (y - s.a[1] - along * s.dy) ** 2;
@@ -43,8 +54,8 @@ export function streetAt(x: number, y: number) {
       nearest = s.road;
     }
   }
-  if (best > (nearest.width / 2) ** 2 && inGardens(x, y)) return 'Piccadilly Gardens';
-  return nearest.name;
+  if (best > ((nearest?.width ?? 0) / 2) ** 2 && inGardens(x, y)) return 'Piccadilly Gardens';
+  return nearest && best < 200 ** 2 ? nearest.name : 'Greater Manchester';
 }
 
 // Traverse joined OSM ways in route order. Offset into the left lane of wider roads
@@ -248,12 +259,13 @@ export type StreetObject = { x: number; y: number } & (
   | { kind: RectKind; hx: number; hy: number }
   | { kind: Exclude<FurnitureKind, RectKind> | 'tree' | 'signal'; radius: number }
 );
+export function mapTree([x, y]: Point) {
+  const seed = (Math.imul(x + y * width, 1664525) + 1013904223) >>> 0;
+  const scale = 0.75 + (seed / 4294967296) * 0.4;
+  return { kind: 'tree' as const, x, y, radius: 2 * scale };
+}
 export const streetObjects: StreetObject[] = [
   ...furniture.map(({ kind, x, y }) => ({ x, y, ...footprints[kind] })),
-  ...trees.map(([x, y]) => {
-    const seed = (Math.imul(x + y * WIDTH, 1664525) + 1013904223) >>> 0;
-    const scale = 0.75 + (seed / 4294967296) * 0.4;
-    return { kind: 'tree' as const, x, y, radius: 2 * scale };
-  }),
+  ...trees.map(mapTree),
   ...signalPosts,
 ];

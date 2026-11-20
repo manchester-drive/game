@@ -3,8 +3,16 @@ import type { Appearance } from '../game/garage';
 import type { Player, Pedestrian, Pose, Position, Vehicle, World } from '../game/game-types';
 import type { StreetObject } from '../game/streets';
 import { gates, raceEntry } from '../game/race';
-import { circuit, crosswalks, streetObjects, WIDTH, HEIGHT } from '../game/streets';
-import { buildings, roads, paths, areas } from '../game/manchester-map';
+import { circuit, crosswalks, streetObjects, mapTree } from '../game/streets';
+import { areas, width as seedWidth } from '../game/manchester-map';
+import {
+  boundary,
+  chunkSize,
+  mapChunk,
+  namedStreets,
+  overlapsTile,
+  type MapChunk,
+} from '../game/region';
 import { jackets, models, skinTones } from '../game/garage';
 import { signals } from '../game/world';
 
@@ -208,10 +216,10 @@ function footprint(g: Context, building: MapData['buildings'][number], rng: () =
   g.restore();
 }
 
-function streetLabels() {
+function streetLabels(chunk: MapChunk) {
   // Place street names on their longest segment, with room between labels.
   const labels: Label[] = [];
-  for (const road of roads.filter((r) => r.name)) {
+  for (const road of namedStreets(chunk)) {
     let longest = 0,
       anchor: Pose | undefined;
     for (let i = 1; i < road.points.length; i++) {
@@ -236,12 +244,11 @@ function streetLabels() {
 }
 
 const tileSize = 720;
-function terrainTile(left: number, top: number, tile: Tile) {
+function terrainTile(left: number, top: number, tile: Tile, edge: Path2D) {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.min(tileSize, WIDTH - left);
-  canvas.height = Math.min(tileSize, HEIGHT - top);
+  canvas.width = canvas.height = tileSize;
   const g = canvas.getContext('2d', { alpha: false })!,
-    rng = random(418 + left + top * WIDTH);
+    rng = random(418 + left + top * seedWidth);
   g.translate(-left, -top);
   rect(g, left, top, canvas.width, canvas.height, '#bfb39e');
   for (let y = top; y < top + canvas.height; y += 9) {
@@ -265,11 +272,12 @@ function terrainTile(left: number, top: number, tile: Tile) {
     for (const area of tile.areas.filter((a) => a.kind === kind)) {
       g.beginPath();
       outline(g, area.points, true);
+      for (const hole of area.holes ?? []) outline(g, hole, true);
       g.fillStyle = fills[kind];
-      g.fill();
+      g.fill('evenodd');
       if (kind !== 'plaza') {
         g.save();
-        g.clip();
+        g.clip('evenodd');
         const xs = area.points.map(([x]) => x),
           ys = area.points.map(([, y]) => y);
         const x = Math.max(left, Math.min(...xs)),
@@ -292,24 +300,42 @@ function terrainTile(left: number, top: number, tile: Tile) {
   }
   g.lineJoin = g.lineCap = 'round';
   for (const p of tile.paths) {
-    if (p.kind !== 'tram') line(g, p.points, p.kind === 'pedestrian' ? 12 : 5, '#d2c6ae');
+    if (p.kind !== 'tram') line(g, p.points, p.width, '#d2c6ae');
   }
-  for (const [extra, ink] of [
-    [5, '#a89983'],
-    [3, '#e2d3b7'],
-    [0, '#595e60'],
-  ] as const) {
-    for (const r of tile.roads) {
-      const restricted = r.access === 'no' || r.access === 'private';
-      line(g, r.points, r.width + extra, extra === 0 && restricted ? '#786b64' : ink);
+  for (const layer of [...new Set(tile.roads.map((r) => r.layer))].sort((a, b) => a - b)) {
+    const roads = tile.roads.filter((r) => r.layer === layer);
+    for (const [extra, ink] of [
+      [5, layer > 0 ? '#55524b' : '#a89983'],
+      [3, '#e2d3b7'],
+      [0, '#595e60'],
+    ] as const) {
+      for (const r of roads) {
+        const restricted = r.access === 'no' || r.access === 'private';
+        line(
+          g,
+          r.points,
+          r.width + extra,
+          extra === 0 && layer < 0 ? '#89847c' : extra === 0 && restricted ? '#786b64' : ink,
+        );
+      }
     }
-  }
-  for (const r of tile.roads) {
-    if (r.width >= 30) {
-      g.setLineDash([9, 15]);
-      line(g, r.points, 1, '#c7bfa9');
-      g.setLineDash([]);
+    g.setLineDash([9, 15]);
+    for (const r of roads) {
+      const lanes = Math.min(12, r.lanes || (!r.oneway && r.width >= 30 ? 2 : 1));
+      for (let lane = 1; lane < lanes; lane++) {
+        const offset = (lane / lanes - 0.5) * r.width;
+        const stripe = r.points.map(([x, y], i): Point => {
+          const a = r.points[Math.max(0, i - 1)],
+            b = r.points[Math.min(r.points.length - 1, i + 1)];
+          const dx = b[0] - a[0],
+            dy = b[1] - a[1],
+            length = Math.hypot(dx, dy) || 1;
+          return [x - (dy / length) * offset, y + (dx / length) * offset];
+        });
+        line(g, stripe, 1, '#c7bfa9');
+      }
     }
+    g.setLineDash([]);
   }
   for (const p of tile.paths.filter((p) => p.kind === 'tram')) {
     line(g, p.points, 7, '#7e7c74');
@@ -328,7 +354,7 @@ function terrainTile(left: number, top: number, tile: Tile) {
   }
   for (const building of tile.buildings) {
     const [x, y] = building.rings[0][0];
-    footprint(g, building, random(x + y * WIDTH));
+    footprint(g, building, random(x + y * seedWidth));
   }
   for (const anchor of tile.labels) {
     g.save();
@@ -367,6 +393,13 @@ function terrainTile(left: number, top: number, tile: Tile) {
     g.restore();
   }
   label(g, 'PICCADILLY GARDENS', gardenLabel.x, gardenLabel.y, 10, '#495b47');
+  const outside = new Path2D(edge);
+  outside.rect(left, top, tileSize, tileSize);
+  g.fillStyle = '#464e49';
+  g.fill(outside, 'evenodd');
+  g.strokeStyle = '#b4aa8f';
+  g.lineWidth = 3;
+  g.stroke(edge);
   return canvas;
 }
 
@@ -378,36 +411,34 @@ const gardenLabel = {
   y: gardenPoints.reduce((sum, p) => sum + p[1], 0) / gardenPoints.length,
 };
 function makeTerrain() {
-  const columns = Math.ceil(WIDTH / tileSize);
-  const tiles: Tile[] = Array.from({ length: columns * Math.ceil(HEIGHT / tileSize) }, () => ({
-    areas: [],
-    roads: [],
-    paths: [],
-    buildings: [],
-    crosswalks: [],
-    labels: [],
-  }));
-  function index<T>(layer: (tile: Tile) => T[], feature: T, points: Point[], padding: number) {
-    const xs = points.map((p) => p[0]),
-      ys = points.map((p) => p[1]);
-    const x0 = Math.max(0, Math.floor((Math.min(...xs) - padding) / tileSize));
-    const y0 = Math.max(0, Math.floor((Math.min(...ys) - padding) / tileSize));
-    const x1 = Math.min(columns - 1, Math.floor((Math.max(...xs) + padding) / tileSize));
-    const y1 = Math.min(
-      Math.ceil(HEIGHT / tileSize) - 1,
-      Math.floor((Math.max(...ys) + padding) / tileSize),
+  const cache = new Map<string, HTMLCanvasElement>();
+  const labels = new WeakMap<MapChunk, Label[]>();
+  const edge = new Path2D();
+  boundary.forEach(([x, y], i) => (i ? edge.lineTo(x, y) : edge.moveTo(x, y)));
+  edge.closePath();
+
+  function renderTile(left: number, top: number, chunk: MapChunk) {
+    let names = labels.get(chunk);
+    if (!names) {
+      names = streetLabels(chunk);
+      labels.set(chunk, names);
+    }
+    const visible = (points: Point[], pad: number) =>
+      overlapsTile(points, left, top, tileSize, pad);
+    return terrainTile(
+      left,
+      top,
+      {
+        roads: chunk.roads.filter((r) => visible(r.points, r.width / 2 + 5)),
+        paths: chunk.paths.filter((p) => visible(p.points, p.width / 2 + 1)),
+        areas: chunk.areas.filter((a) => visible(a.points, 1)),
+        buildings: chunk.buildings.filter((b) => visible(b.rings[0], 3)),
+        crosswalks,
+        labels: names.filter((l) => visible([[l.x, l.y]], l.name.length * 3 + 12)),
+      },
+      edge,
     );
-    for (let y = y0; y <= y1; y++)
-      for (let x = x0; x <= x1; x++) layer(tiles[y * columns + x]).push(feature);
   }
-  for (const r of roads) index((tile) => tile.roads, r, r.points, r.width / 2 + 4);
-  for (const p of paths) index((tile) => tile.paths, p, p.points, 8);
-  for (const a of areas) index((tile) => tile.areas, a, a.points, 1);
-  for (const b of buildings) index((tile) => tile.buildings, b, b.rings.flat(), 3);
-  for (const c of crosswalks) index((tile) => tile.crosswalks, c, [[c.x, c.y]], c.half + 20);
-  for (const l of streetLabels())
-    index((tile) => tile.labels, l, [[l.x, l.y]], l.name.length * 3 + 12);
-  const cache = new Map<number, HTMLCanvasElement>();
   return (g: Context, left: number, top: number, width: number, height: number) => {
     const x0 = Math.floor(left / tileSize),
       x1 = Math.floor((left + width - 1) / tileSize);
@@ -415,8 +446,18 @@ function makeTerrain() {
       y1 = Math.floor((top + height - 1) / tileSize);
     for (let y = y0; y <= y1; y++)
       for (let x = x0; x <= x1; x++) {
-        const key = y * columns + x;
-        const canvas = cache.get(key) ?? terrainTile(x * tileSize, y * tileSize, tiles[key]);
+        const key = x + ',' + y;
+        let canvas = cache.get(key);
+        if (!canvas) {
+          const left = x * tileSize,
+            top = y * tileSize;
+          const chunk = mapChunk(left, top);
+          if (!chunk) {
+            rect(g, left, top, tileSize, tileSize, '#bfb39e');
+            continue;
+          }
+          canvas = renderTile(left, top, chunk);
+        }
         cache.delete(key);
         cache.set(key, canvas);
         g.drawImage(canvas, x * tileSize, y * tileSize);
@@ -568,10 +609,9 @@ function light(g: Context, x: number, y: number, state: string) {
 }
 
 export function viewport(canvas: HTMLCanvasElement) {
-  const zoom = Math.max(1.7, canvas.clientWidth / WIDTH, canvas.clientHeight / HEIGHT);
   return {
-    width: Math.min(WIDTH, Math.ceil(canvas.clientWidth / zoom)),
-    height: Math.min(HEIGHT, Math.ceil(canvas.clientHeight / zoom)),
+    width: Math.ceil(canvas.clientWidth / 1.7),
+    height: Math.ceil(canvas.clientHeight / 1.7),
   };
 }
 
@@ -594,8 +634,8 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
       buffer.width = vw;
       buffer.height = vh;
     }
-    const x = Math.round(Math.max(0, Math.min(WIDTH - vw, focus.x - vw / 2)));
-    const y = Math.round(Math.max(0, Math.min(HEIGHT - vh, focus.y - vh / 2)));
+    const x = Math.round(focus.x - vw / 2);
+    const y = Math.round(focus.y - vh / 2);
     b.setTransform(1, 0, 0, 1, -x, -y);
     paintTerrain(b, x, y, vw, vh);
     const entry = raceEntry(world.race, me);
@@ -612,6 +652,23 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
       (o) =>
         o.x >= x - margin && o.x <= x + vw + margin && o.y >= y - margin && o.y <= y + vh + margin,
     );
+    // Chunks include a margin. Draw each regional trunk from its owning chunk once.
+    for (let i = Math.floor((x - margin) / chunkSize); i <= (x + vw + margin) / chunkSize; i++) {
+      for (let j = Math.floor((y - margin) / chunkSize); j <= (y + vh + margin) / chunkSize; j++) {
+        const chunk = mapChunk(i * chunkSize, j * chunkSize);
+        for (const p of chunk?.trees ?? []) {
+          if (
+            Math.floor(p[0] / chunkSize) === i &&
+            Math.floor(p[1] / chunkSize) === j &&
+            p[0] >= x - margin &&
+            p[0] <= x + vw + margin &&
+            p[1] >= y - margin &&
+            p[1] <= y + vh + margin
+          )
+            scene.push(mapTree(p));
+        }
+      }
+    }
     for (const p of world.players) {
       if (p.parkedCar) scene.push(p.parkedCar);
     }

@@ -1,3 +1,5 @@
+import { serveMapChunk, useServerMap } from './map';
+import { mapVersion } from '../game/region';
 import page from '../client/index.html';
 import type { World } from '../game/game-types';
 import { encodeSnapshot, snapshotPath } from '../protocol/snapshots';
@@ -9,6 +11,7 @@ export function createGameServer({
   port = Number(Bun.env.PORT || 4173),
   development = false,
 } = {}) {
+  useServerMap();
   const room = new GameRoom();
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   function broadcast(world: World) {
@@ -27,6 +30,13 @@ export function createGameServer({
     port,
     development,
     routes: {
+      '/map/:version/:key': {
+        GET(req) {
+          return req.params.version === mapVersion
+            ? serveMapChunk(req.params.key)
+            : new Response(null, { status: 404 });
+        },
+      },
       '/': page,
       '/index.html': page,
       [snapshotPath]: {

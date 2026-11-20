@@ -3,8 +3,7 @@ import type { GarageOptions } from './garage';
 
 // World coordinates are pixels, heading is measured clockwise from east.
 import {
-  WIDTH,
-  HEIGHT,
+  mapTree,
   circuits,
   circuit,
   crosswalks,
@@ -13,7 +12,9 @@ import {
   spawns,
   streetObjects,
 } from './streets';
-import { buildings, garden_walks as gardenWalks } from './manchester-map';
+import { boundary, clampToM60, insideM60, mapChunk, type MapChunk } from './region';
+import type { Point } from './map-types';
+import { garden_walks as gardenWalks } from './manchester-map';
 import { checkGate, heldOnGrid, withdraw } from './race';
 import { appearance, models } from './garage';
 export { WIDTH, HEIGHT, JUNCTION, signalPosts } from './streets';
@@ -55,9 +56,11 @@ interface Hit {
   other?: Vehicle;
   person?: PersonBody;
 }
-const cells = new Map<string, (Box | Circle)[]>();
+type Cells = Map<string, (Box | Circle)[]>;
+const fixtures: Cells = new Map();
+const chunkWalls = new WeakMap<MapChunk, Cells>();
 const cellKey = (x: number, y: number) => x + ',' + y;
-function indexSolid(solid: Box | Circle) {
+function indexSolid(cells: Cells, solid: Box | Circle) {
   // Expand by the largest vehicle's corner radius so each mover only queries one cell.
   const rx = ('radius' in solid ? solid.radius : radius(solid, 1, 0)) + 13,
     ry = ('radius' in solid ? solid.radius : radius(solid, 0, 1)) + 13;
@@ -69,25 +72,39 @@ function indexSolid(solid: Box | Circle) {
     }
   }
 }
-for (const { rings } of buildings) {
-  for (const ring of rings) {
-    for (let i = 0; i < ring.length; i++) {
-      const [x, y] = ring[i],
-        [ex, ey] = ring[(i + 1) % ring.length];
-      const length = Math.hypot(ex - x, ey - y);
-      if (length)
-        indexSolid(box((x + ex) / 2, (y + ey) / 2, Math.atan2(ey - y, ex - x), length / 2, 0.35));
-    }
+function indexRing(cells: Cells, ring: Point[]) {
+  for (let i = 0; i < ring.length; i++) {
+    const [x, y] = ring[i],
+      [ex, ey] = ring[(i + 1) % ring.length];
+    const length = Math.hypot(ex - x, ey - y);
+    if (length)
+      indexSolid(
+        cells,
+        box((x + ex) / 2, (y + ey) / 2, Math.atan2(ey - y, ex - x), length / 2, 0.35),
+      );
   }
 }
+indexRing(fixtures, boundary);
 for (const item of streetObjects) {
-  indexSolid('radius' in item ? item : box(item.x, item.y, 0, item.hx, item.hy));
+  indexSolid(fixtures, 'radius' in item ? item : box(item.x, item.y, 0, item.hx, item.hy));
 }
 function wallContact(body: Box) {
-  const walls = cells.get(cellKey(Math.floor(body.x / 64), Math.floor(body.y / 64))) ?? [];
-  for (const wall of walls) {
-    const hit = 'radius' in wall ? roundContact(body, wall) : contact(body, wall);
-    if (hit) return hit;
+  const chunk = mapChunk(body.x, body.y);
+  const key = cellKey(Math.floor(body.x / 64), Math.floor(body.y / 64));
+  let walls = chunk && chunkWalls.get(chunk);
+  if (chunk && !walls) {
+    walls = new Map();
+    for (const building of chunk.buildings)
+      for (const ring of building.rings) indexRing(walls, ring);
+    for (const tree of chunk.trees) indexSolid(walls, mapTree(tree));
+    chunkWalls.set(chunk, walls);
+  }
+  for (const cell of [fixtures.get(key), walls?.get(key)]) {
+    if (!cell) continue;
+    for (const wall of cell) {
+      const hit = 'radius' in wall ? roundContact(body, wall) : contact(body, wall);
+      if (hit) return hit;
+    }
   }
   return null;
 }
@@ -143,12 +160,13 @@ function overlap(a: Box, b: Box) {
   return contact(a, b) !== null;
 }
 function obstacle(v: PersonBody, vehicles: Vehicle[], people: PersonBody[], body: Box): Hit | null {
-  const rx = radius(body, 1, 0),
-    ry = radius(body, 0, 1);
-  if (v.x < rx) return { nx: -1, ny: 0 };
-  if (v.x > WIDTH - rx) return { nx: 1, ny: 0 };
-  if (v.y < ry) return { nx: 0, ny: -1 };
-  if (v.y > HEIGHT - ry) return { nx: 0, ny: 1 };
+  if (!insideM60(v.x, v.y)) {
+    const closest = clampToM60(v.x, v.y);
+    const dx = v.x - closest.x,
+      dy = v.y - closest.y,
+      d = Math.hypot(dx, dy) || 1;
+    return { nx: dx / d, ny: dy / d };
+  }
   const wall = wallContact(body);
   if (wall) return wall;
   for (const other of vehicles) {
@@ -533,10 +551,7 @@ export function step(world: World, inputs: ReadonlyMap<string, number>, dt: numb
       const next = { x: p.x + nx * side * 20 * dt, y: p.y + ny * side * 20 * dt };
       const bounds = personBox(next);
       if (
-        next.x >= 3 &&
-        next.y >= 3 &&
-        next.x <= WIDTH - 3 &&
-        next.y <= HEIGHT - 3 &&
+        insideM60(next.x, next.y) &&
         !wallContact(bounds) &&
         !vehicles.some((v) => overlap(bounds, vehicleBox(v))) &&
         !world.players.some((p) => p.parkedCar && overlap(bounds, personBox(p)))
