@@ -41,7 +41,16 @@ env HOST=0.0.0.0 PORT=4174 bun start
 
 Both drivers open the host computer's LAN address on port 4174. Set `PORT` to use a different port. The default bind address is loopback. Stop the server with Ctrl-C.
 
-For development, `bun run dev` watches the server and client sources. For production, `bun run build` creates a standalone executable for the build platform at `dist/manchester-drive`. The Dockerfile builds the Linux executable for Fly.io and runs it as an unprivileged user. Both modes use the same `HOST` and `PORT` settings.
+For development, `bun run dev` watches the server and client sources. For production, `bun run build` creates a standalone executable for the build platform at `dist/manchester-drive`. The Dockerfile builds the Linux executable for Fly.io. Both modes use the same `HOST` and `PORT` settings.
+
+The server keeps accounts in SQLite at `DATABASE_PATH`, which defaults to `data/game.db`. Migrations run at startup. On Fly.io the database lives on a volume mounted at `/data`. Create the volume once before the first deploy and keep a single machine.
+
+```fish
+fly volumes create data --size 1 --region lhr
+fly scale count 1
+```
+
+The container starts as root only to give the volume to the unprivileged user, then runs the server as that user.
 
 Fly.io deploys are blue-green. The new machine must pass `/healthz` before it takes traffic. Fly then sends the old machine `SIGTERM`. The old server tells its viewers it is restarting, then closes their streams. Browsers reconnect within about a second. A browser that reaches a new build reloads the page. Drivers join again automatically, using the name and outfit kept in session storage. Positions, races and chat history do not carry over, because the room exists only in memory.
 

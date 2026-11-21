@@ -10,6 +10,12 @@ kill_timeout = "10s"
 [env]
   HOST = "0.0.0.0"
   PORT = "4173"
+  DATABASE_PATH = "/data/game.db"
+
+# One volume ties the app to one machine, as the in-memory room already does.
+[mounts]
+  source = "data"
+  destination = "/data"
 
 [http_service]
   internal_port = 4173

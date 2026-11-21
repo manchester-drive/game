@@ -11,6 +11,7 @@ import { neighbourhoodFrames } from './neighbourhoods';
 import { encodeChat, encodeHello, restartEvent, snapshotPath } from '../protocol/snapshots';
 import { GameRoom } from './room';
 import { createRoutes } from './routes';
+import { openDatabase } from './db';
 
 export function createGameServer({
   hostname = Bun.env.HOST || '127.0.0.1',
@@ -19,6 +20,8 @@ export function createGameServer({
   // Fly sets the image reference per deploy; other runs get a per-process build.
   build = Bun.env.FLY_IMAGE_REF || crypto.randomUUID(),
   room = new GameRoom(),
+  // Tests get a throwaway database; the deployed server passes its file.
+  database = openDatabase(':memory:'),
 } = {}) {
   useServerMap();
   interface Viewer {
@@ -139,13 +142,17 @@ export function createGameServer({
       viewers.clear();
       // Let the closed streams flush their restart event before forcing the rest.
       await Promise.race([server.stop(), Bun.sleep(1000)]);
-      return server.stop(true);
+      await server.stop(true);
+      database.close();
     },
   };
 }
 
 if (import.meta.main) {
-  const server = createGameServer({ development: Bun.env.NODE_ENV === 'development' });
+  const server = createGameServer({
+    development: Bun.env.NODE_ENV === 'development',
+    database: openDatabase(),
+  });
   console.log('Manchester Drive listening on ' + server.url);
   // Fly sends SIGINT by default and SIGTERM when configured; handle both.
   let closing = false;
