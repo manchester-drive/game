@@ -7,7 +7,7 @@ export function el(
   id: 'bee' | 'map' | 'garage-preview' | 'creator-preview' | 'car-preview',
 ): HTMLCanvasElement;
 export function el(
-  id: 'account-dialog' | 'creator' | 'car-picker' | 'area-picker' | 'garage',
+  id: 'account-dialog' | 'creator' | 'car-picker' | 'area-picker' | 'garage' | 'shortcuts',
 ): HTMLDialogElement;
 export function el(id: 'account-form' | 'creator-form' | 'car-form' | 'area-form'): HTMLFormElement;
 export function el(
@@ -124,6 +124,7 @@ export function updateHud(state: HudState) {
     button.setAttribute('aria-label', label);
   }
   el('camera-keys').hidden = !freeCam;
+  for (const key of document.querySelectorAll<HTMLElement>('.chat-key')) key.hidden = !playerId;
   el('start').disabled = busy || !connected;
   el('network').textContent = connected ? 'Live' : 'Connecting';
   el('network').classList.toggle('live', connected);

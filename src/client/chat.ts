@@ -34,6 +34,8 @@ export function setupChat(releaseControls: () => void) {
     }
   });
 
+  setupResize(panel, el('chat-resize'));
+
   function refreshForm() {
     form.hidden = !token;
     channel.hidden = !token;
@@ -176,4 +178,85 @@ export function setupChat(releaseControls: () => void) {
     refreshForm();
   }
   return { receive, updateSession, drawBubbles };
+}
+
+const sizeKey = 'manchester-drive:chat-size';
+const minWidth = 256,
+  minLog = 48,
+  keyStep = 24;
+
+// The panel sits in the bottom-left corner, so its grip is top-right:
+// dragging right widens it and dragging up gives the log more lines.
+function setupResize(panel: HTMLElement, grip: HTMLElement) {
+  const log = el('chat-log');
+  let width = 0,
+    height = 0;
+
+  function apply(nextWidth: number, nextHeight: number) {
+    const main = el('map').parentElement!;
+    width = Math.round(Math.min(Math.max(nextWidth, minWidth), Math.max(minWidth, main.clientWidth - 48)));
+    height = Math.round(Math.min(Math.max(nextHeight, minLog), Math.max(minLog, main.clientHeight - 200)));
+    panel.style.setProperty('--chat-width', width + 'px');
+    panel.style.setProperty('--chat-log-height', height + 'px');
+    panel.classList.add('sized');
+  }
+  function save() {
+    try {
+      localStorage.setItem(sizeKey, JSON.stringify({ width, height }));
+    } catch {}
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(sizeKey) ?? 'null');
+    if (Number.isFinite(saved?.width) && Number.isFinite(saved?.height)) apply(saved.width, saved.height);
+  } catch {}
+
+  let drag: { id: number; x: number; y: number; width: number; height: number } | null = null;
+  grip.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    drag = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      width: panel.offsetWidth,
+      height: log.hidden ? height || minLog : log.offsetHeight,
+    };
+    panel.classList.add('resizing');
+  });
+  grip.addEventListener('pointermove', (event) => {
+    if (drag?.id !== event.pointerId) return;
+    apply(drag.width + event.clientX - drag.x, drag.height - (event.clientY - drag.y));
+  });
+  grip.addEventListener('lostpointercapture', () => {
+    if (!drag) return;
+    drag = null;
+    panel.classList.remove('resizing');
+    if (width) save();
+  });
+  grip.addEventListener('dblclick', () => {
+    panel.classList.remove('sized');
+    panel.style.removeProperty('--chat-width');
+    panel.style.removeProperty('--chat-log-height');
+    width = height = 0;
+    try {
+      localStorage.removeItem(sizeKey);
+    } catch {}
+  });
+  grip.addEventListener('keydown', (event) => {
+    const delta: Record<string, [number, number]> = {
+      ArrowRight: [keyStep, 0],
+      ArrowLeft: [-keyStep, 0],
+      ArrowUp: [0, keyStep],
+      ArrowDown: [0, -keyStep],
+    };
+    const step = delta[event.key];
+    if (!step) return;
+    event.preventDefault();
+    apply(
+      (width || panel.offsetWidth) + step[0],
+      (height || (log.hidden ? minLog : log.offsetHeight)) + step[1],
+    );
+    save();
+  });
 }

@@ -123,6 +123,15 @@ let rejoinTried = false;
 const chat = setupChat(release);
 const gps = makeGps();
 const worldMap = setupWorldMap(release, gps);
+const shortcuts = el('shortcuts');
+function toggleShortcuts() {
+  if (shortcuts.open) return shortcuts.close();
+  if (worldMap.dialog.open) worldMap.dialog.close();
+  release();
+  shortcuts.showModal();
+}
+el('shortcuts-open').onclick = toggleShortcuts;
+el('shortcuts-close').onclick = () => shortcuts.close();
 
 function updateUI() {
   const driver = session && connected && predicted && !predicted.parkedCarId ? predicted : undefined;
@@ -331,10 +340,16 @@ for (const type of ['keydown', 'keyup'] as const)
       return;
     if (event.code === 'KeyM' && type === 'keydown' && !event.repeat) {
       event.preventDefault();
+      if (shortcuts.open) shortcuts.close();
       worldMap.toggle();
       return;
     }
-    if (worldMap.dialog.open) return;
+    if (event.key === '?' && type === 'keydown' && !event.repeat) {
+      event.preventDefault();
+      toggleShortcuts();
+      return;
+    }
+    if (worldMap.dialog.open || shortcuts.open) return;
     if (session && event.code === 'KeyT' && type === 'keydown' && !event.repeat) {
       event.preventDefault();
       el('chat-input').focus({ preventScroll: true });

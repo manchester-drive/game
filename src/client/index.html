@@ -177,6 +177,54 @@
           <button type="button" id="garage-close" class="secondary">Done</button>
         </div>
       </dialog>
+      <dialog id="shortcuts" aria-labelledby="shortcuts-title">
+        <div class="shortcuts-heading">
+          <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+          <button type="button" id="shortcuts-close" class="secondary" autofocus>Close</button>
+        </div>
+        <div class="shortcut-groups">
+          <section aria-labelledby="keys-driving">
+            <h3 id="keys-driving">Driving</h3>
+            <dl>
+              <dt><kbd>W</kbd></dt><dd>Accelerate</dd>
+              <dt><kbd>S</kbd></dt><dd>Brake, then reverse</dd>
+              <dt><kbd>A</kbd><kbd>D</kbd></dt><dd>Steer left and right</dd>
+              <dt><kbd>E</kbd></dt><dd>Get out of the car</dd>
+            </dl>
+          </section>
+          <section aria-labelledby="keys-walking">
+            <h3 id="keys-walking">On foot</h3>
+            <dl>
+              <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk north, west, south, east</dd>
+              <dt><kbd>E</kbd></dt><dd>Enter your car when close</dd>
+            </dl>
+          </section>
+          <section aria-labelledby="keys-camera">
+            <h3 id="keys-camera">Free cam</h3>
+            <dl>
+              <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Pan (arrow keys work too)</dd>
+              <dt>Drag</dt><dd>Pan with the mouse or a finger</dd>
+              <dt><kbd>Esc</kbd></dt><dd>Return to your player</dd>
+            </dl>
+          </section>
+          <section aria-labelledby="keys-chat">
+            <h3 id="keys-chat">Chat</h3>
+            <dl>
+              <dt><kbd>T</kbd></dt><dd>Start typing a message</dd>
+              <dt><kbd>Enter</kbd></dt><dd>Send</dd>
+              <dt><kbd>Alt</kbd><kbd>Enter</kbd></dt><dd>Switch global and local chat</dd>
+              <dt><kbd>Esc</kbd></dt><dd>Leave chat and return to driving</dd>
+            </dl>
+          </section>
+          <section aria-labelledby="keys-general">
+            <h3 id="keys-general">General</h3>
+            <dl>
+              <dt><kbd>M</kbd></dt><dd>Open or close the world map</dd>
+              <dt><kbd>?</kbd></dt><dd>Show these shortcuts</dd>
+            </dl>
+          </section>
+        </div>
+      </dialog>
       <section id="race-panel" aria-label="Northern Quarter race" hidden>
         <div class="race-heading">
           <strong>Northern Quarter race</strong><span id="race-clock"></span>
@@ -206,6 +254,14 @@
       </div>
     </main>
     <section id="chat-panel" aria-labelledby="chat-title">
+      <div
+        id="chat-resize"
+        role="separator"
+        tabindex="0"
+        aria-label="Resize chat"
+        aria-controls="chat-log"
+        title="Drag to resize chat. Double-click to reset."
+      ></div>
       <div class="chat-heading">
         <h2 id="chat-title">Global chat</h2>
         <select
@@ -238,12 +294,24 @@
     <footer>
       <div class="bindings" id="driving-keys">
         <span><kbd>W</kbd> Accelerate</span><span><kbd>S</kbd> Brake / reverse</span
-        ><span><kbd>A</kbd><kbd>D</kbd> Steer</span><span><kbd>E</kbd> Door</span>
+        ><span><kbd>A</kbd><kbd>D</kbd> Steer</span><span><kbd>E</kbd> Door</span
+        ><span class="chat-key"><kbd>T</kbd> Chat</span><span><kbd>M</kbd> Map</span>
       </div>
       <div class="bindings" id="walking-keys" hidden>
-        <span><kbd>WASD</kbd> Walk</span><span><kbd>E</kbd> Enter car</span>
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk</span><span><kbd>E</kbd> Enter car</span
+        ><span class="chat-key"><kbd>T</kbd> Chat</span><span><kbd>M</kbd> Map</span>
       </div>
-      <div class="bindings" id="camera-keys" hidden>Drag to pan · WASD or arrow keys</div>
+      <div class="bindings" id="camera-keys" hidden>
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or drag Pan</span><span><kbd>Esc</kbd> Return</span
+        ><span><kbd>M</kbd> Map</span>
+      </div>
+      <div class="bindings" id="chat-keys">
+        <span><kbd>Enter</kbd> Send</span><span><kbd>Alt</kbd><kbd>Enter</kbd> Channel</span
+        ><span><kbd>Esc</kbd> Back to map</span>
+      </div>
+      <button type="button" id="shortcuts-open" class="link" aria-haspopup="dialog" aria-keyshortcuts="Shift+/">
+        <kbd>?</kbd> Shortcuts
+      </button>
       <a
         class="attribution"
         href="https://www.openstreetmap.org/copyright"
