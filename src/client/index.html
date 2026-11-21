@@ -68,6 +68,7 @@
         </div>
         <div class="garage">
           <button type="button" id="car-open" class="secondary" aria-haspopup="dialog">Choose car</button>
+          <button type="button" id="area-open" class="secondary" aria-haspopup="dialog">Start: Piccadilly</button>
           <button type="button" id="creator-open" class="secondary" aria-haspopup="dialog">Edit character</button>
         </div>
         <div class="account-bar">
@@ -144,6 +145,22 @@
             <button value="save">Save car</button
             ><button type="button" id="car-cancel" class="secondary">Cancel</button>
           </div>
+        </form>
+      </dialog>
+      <dialog id="area-picker" aria-labelledby="area-title">
+        <form id="area-form" method="dialog">
+          <h2 id="area-title">Where to start</h2>
+          <p class="account-hint" id="area-hint">Pick an area inside the M60.</p>
+          <fieldset class="area-plot">
+            <legend class="visually-hidden">Starting area</legend>
+            <svg aria-hidden="true" preserveAspectRatio="none"><use id="area-terrain"></use></svg>
+            <div id="area-pins"></div>
+          </fieldset>
+          <div class="fields">
+            <button value="save">Start here</button
+            ><button type="button" id="area-cancel" class="secondary">Cancel</button>
+          </div>
+          <p id="area-error" role="alert" hidden></p>
         </form>
       </dialog>
       <section id="race-panel" aria-label="Northern Quarter race" hidden>

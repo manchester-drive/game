@@ -8,6 +8,7 @@ import {
   type NamedStreet,
 } from './region';
 import type { FurnitureKind, Point, Road, RouteLeg } from './map-types';
+import type { Position } from './game-types';
 import { areas, crossings, furniture, roads, routes, trees, width } from './manchester-map';
 
 const xs = boundary.map(([x]) => x),
@@ -226,8 +227,8 @@ export const spawns = [
   return [p.x - p.dy * (p.halfWidth - 3), p.y + p.dx * (p.halfWidth - 3), p.angle];
 });
 
-// Start at the usual bays, then search mapped streets outwards from Piccadilly.
-function startingChunks() {
+// Search mapped streets outwards from a centre, nearest chunk first.
+function startingChunks(centre: Position) {
   const origins: Point[] = [];
   const firstCol = Math.floor(Math.min(...xs) / chunkSize),
     lastCol = Math.floor(Math.max(...xs) / chunkSize);
@@ -239,17 +240,21 @@ function startingChunks() {
     }
   }
   const distance = ([x, y]: Point) =>
-    (x + chunkSize / 2 - JUNCTION.x) ** 2 + (y + chunkSize / 2 - JUNCTION.y) ** 2;
+    (x + chunkSize / 2 - centre.x) ** 2 + (y + chunkSize / 2 - centre.y) ** 2;
   return origins.sort((a, b) => distance(a) - distance(b));
 }
 
-let orderedChunks: Point[] | undefined;
-export function* startingPositions() {
-  yield* spawns;
-  orderedChunks ??= startingChunks();
-  for (const [left, top] of orderedChunks) {
+const orderedChunks = new Map<string, Point[]>();
+// Piccadilly starts at the usual bays. Every centre then tries the closest clear streets.
+export function* startingPositions(centre: Position = JUNCTION) {
+  if (Math.hypot(centre.x - JUNCTION.x, centre.y - JUNCTION.y) < 1) yield* spawns;
+  const key = Math.round(centre.x) + ',' + Math.round(centre.y);
+  let chunks = orderedChunks.get(key);
+  if (!chunks) orderedChunks.set(key, (chunks = startingChunks(centre)));
+  for (const [left, top] of chunks) {
     const chunk = mapChunk(left, top);
     if (!chunk) continue;
+    const candidates: number[][] = [];
     for (const road of chunk.roads) {
       if (road.layer !== 0 || !['yes', 'permissive', 'designated'].includes(road.access)) continue;
       const offset = Math.max(0, road.width / 2 - 6);
@@ -262,11 +267,13 @@ export function* startingPositions() {
           const x = s.a[0] + d * s.dx + direction * s.dy * offset;
           const y = s.a[1] + d * s.dy - direction * s.dx * offset;
           if (x >= left && x < left + chunkSize && y >= top && y < top + chunkSize) {
-            yield [x, y, angle];
+            candidates.push([x, y, angle]);
           }
         }
       }
     }
+    const distance = ([x, y]: number[]) => (x - centre.x) ** 2 + (y - centre.y) ** 2;
+    yield* candidates.sort((a, b) => distance(a) - distance(b));
   }
 }
 

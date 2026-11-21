@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { maxViewSpan } from './view';
 import { chatTextLimit } from './chat';
 import type { Character, Livery } from '../game/garage';
+import type { StartArea } from '../game/areas';
 
 export interface Credentials {
   id: string;
@@ -53,6 +54,7 @@ export interface AccountProfile {
   character: Character | null;
   vehicles: OwnedVehicle[];
   activeVehicleId: string | null;
+  startArea: StartArea;
 }
 export interface Commands {
   '/account/signup': AccountCredentials;
@@ -60,8 +62,9 @@ export interface Commands {
   '/account/logout': Record<string, never>;
   '/account/character': Character;
   '/account/vehicles/starter': Livery;
+  '/account/area': { area: StartArea };
   '/view': z.input<typeof viewCommand>;
-  '/join': Character & Partial<Livery> & { name: string };
+  '/join': Character & Partial<Livery> & { name: string; area?: StartArea };
   '/leave': Token;
   '/chat': Token & z.input<typeof chatCommand>;
   '/input': Token & z.input<typeof inputCommand>;

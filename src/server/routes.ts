@@ -15,6 +15,8 @@ import {
 } from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
 import { character, livery, models } from '../game/garage';
+import { startArea, startAreas } from '../game/areas';
+import { startingPositions } from '../game/streets';
 import {
   credentialsBody,
   LoginLimiter,
@@ -64,6 +66,7 @@ export function createRoutes(
       '/account/logout',
       '/account/character',
       '/account/vehicles/starter',
+      '/account/area',
       ...authenticatedCommands,
     ],
     bodyLimit({ maxSize: 2048, onError: (c) => c.json({ error: 'Request too large.' }, 413) }),
@@ -91,6 +94,7 @@ export function createRoutes(
       character: accounts.character(fresh.id),
       vehicles: accounts.vehicles(fresh.id),
       activeVehicleId: fresh.active_vehicle_id,
+      startArea: startArea(fresh.start_area),
     };
   }
   function signedIn(c: Context<Env>) {
@@ -143,6 +147,12 @@ export function createRoutes(
     accounts.saveCharacter(user.id, character(c.var.body));
     return c.json(publicUser(user));
   });
+  api.post('/account/area', (c) => {
+    const user = signedIn(c);
+    if (!user) return c.json({ error: 'Log in to save a starting area.' }, 401);
+    accounts.saveStartArea(user.id, startArea(c.var.body.area));
+    return c.json(publicUser(user));
+  });
   api.post('/account/vehicles/starter', (c) => {
     const user = signedIn(c);
     if (!user) return c.json({ error: 'Log in to keep a vehicle.' }, 401);
@@ -158,7 +168,8 @@ export function createRoutes(
       const vehicle = accounts.activeVehicle(user);
       if (!vehicle) return c.json({ error: 'Pick your first vehicle before driving.' }, 409);
       const look = character(accounts.character(user.id) ?? {});
-      const result = room.join(user.username, look, undefined, { userId: user.id, livery: vehicle });
+      const positions = startingPositions(startAreas[startArea(user.start_area)]);
+      const result = room.join(user.username, look, positions, { userId: user.id, livery: vehicle });
       return 'error' in result ? c.json(result, 409) : c.json(result, 201);
     }
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 16) : '';
@@ -167,7 +178,8 @@ export function createRoutes(
     // Guests drive a starter model and keep nothing.
     const choice = livery(body);
     if (!models[choice.model].starter) choice.model = 'hatch';
-    const result = room.join(name, { ...character(body), model: choice.model }, undefined, {
+    const positions = startingPositions(startAreas[startArea(body.area)]);
+    const result = room.join(name, { ...character(body), model: choice.model }, positions, {
       livery: typeof body.paint === 'string' ? choice : undefined,
     });
     return 'error' in result ? c.json(result, 409) : c.json(result, 201);

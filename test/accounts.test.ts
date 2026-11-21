@@ -3,6 +3,10 @@ import { Accounts } from '../src/server/accounts';
 import { openDatabase } from '../src/server/db';
 import { GameRoom } from '../src/server/room';
 import { createRoutes } from '../src/server/routes';
+import { useServerMap } from '../src/server/map';
+import { startAreas } from '../src/game/areas';
+
+useServerMap();
 
 function setup(now = Date.now) {
   const room = new GameRoom();
@@ -158,4 +162,20 @@ test('guests can only drive starter models', async () => {
   expect(room.sessionFor(coupe.body.token)!.player).toMatchObject({ model: 'hatch', color: '#8ba9e4' });
   const van = await post('/join', { name: 'Lee', model: 'van' });
   expect(room.sessionFor(van.body.token)!.player.model).toBe('van');
+});
+
+test('guests choose a starting area each time and accounts keep theirs', async () => {
+  const { room, post } = setup();
+  const near = (token: string, area: keyof typeof startAreas) => {
+    const { x, y } = room.sessionFor(token)!.player;
+    return Math.hypot(x - startAreas[area].x, y - startAreas[area].y) < 500;
+  };
+  const guest = await post('/join', { name: 'Mo', area: 'didsbury' });
+  expect(near(guest.body.token, 'didsbury')).toBe(true);
+
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  await post('/account/vehicles/starter', { model: 'hatch' });
+  expect((await post('/account/area', { area: 'chorlton' })).body.startArea).toBe('chorlton');
+  const ada = await post('/join', { area: 'didsbury' });
+  expect(near(ada.body.token, 'chorlton')).toBe(true);
 });

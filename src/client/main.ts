@@ -9,6 +9,7 @@ import { createWorld, drive, walk, JUNCTION } from '../game/world';
 import type { AccountProfile, Commands, Credentials } from '../protocol/commands';
 import { setupAccount } from './account';
 import { setupChat } from './chat';
+import { setupAreaPicker } from './area-picker';
 import { setupCarPicker } from './car-picker';
 import { setupCreator } from './creator';
 import { el, notice, setupGarage, updateHud } from './hud';
@@ -59,6 +60,12 @@ const picker = setupCarPicker(async (ride) => {
   account.replace(result.data);
   return null;
 });
+// Guests pick an area each visit. Accounts keep their choice.
+const areas = setupAreaPicker(async (area) => {
+  if (!account.current()) return null;
+  const result = await post('/account/area', { area }).catch(() => null);
+  return result?.ok ? null : (result?.error ?? 'Could not save your starting area. Try again.');
+});
 const refreshPreview = setupGarage(creator.current, picker.current);
 creator.onChange(refreshPreview);
 picker.onChange(refreshPreview);
@@ -69,6 +76,7 @@ const account = setupAccount((profile, signedUp) => {
   if (profile?.character) creator.set(profile.character);
   const vehicle = activeVehicle(profile);
   if (vehicle) picker.set(vehicle);
+  areas.set(profile?.startArea ?? 'piccadilly');
   // The first car is free once. Later cars and repaints belong in the garage.
   el('car-open').hidden = !!vehicle;
   if (signedUp) void welcome();
@@ -78,9 +86,11 @@ async function welcome() {
   await post('/account/character', creator.current()).catch(() => null);
   await creator.open();
   await picker.open();
+  await areas.open();
 }
 el('creator-open').onclick = () => creator.open();
 el('car-open').onclick = () => picker.open();
+el('area-open').onclick = () => areas.open();
 // The driver's details survive a reload so a deploy can put them back in a car.
 const driverKey = 'manchester-drive:driver';
 function savedDriver(): Commands['/join'] | null {
@@ -190,7 +200,12 @@ async function join(driver: Commands['/join']) {
 el('join').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (account.current() && !activeVehicle(account.current()) && !(await picker.open())) return;
-  join({ name: el('name').value, ...creator.current(), ...picker.current() });
+  join({
+    name: el('name').value,
+    ...creator.current(),
+    ...picker.current(),
+    area: areas.current(),
+  });
 });
 // Try once per connection, so a failed join falls back to the join form.
 function rejoin() {

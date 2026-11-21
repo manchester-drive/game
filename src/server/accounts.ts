@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 import { character, livery, models, type Character, type Livery } from '../game/garage';
 import type { OwnedVehicle } from '../protocol/commands';
+import type { StartArea } from '../game/areas';
 
 export const sessionDays = 30;
 const sessionMs = sessionDays * 24 * 60 * 60 * 1000;
@@ -106,6 +107,10 @@ export class Accounts {
            updated_at = $now`,
       )
       .run({ user: userId, now: this.now(), ...look });
+  }
+
+  saveStartArea(userId: string, area: StartArea) {
+    this.db.query('UPDATE users SET start_area = ? WHERE id = ?').run(area, userId);
   }
 
   vehicles(userId: string): OwnedVehicle[] {
