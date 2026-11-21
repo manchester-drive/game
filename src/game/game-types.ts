@@ -10,6 +10,9 @@ export interface Pose extends Position {
 export interface Vehicle extends Pose {
   id: string;
   color: string;
+  roof?: string;
+  stripe?: string;
+  plate?: string;
   model?: Appearance['model'];
   speed: number;
   slideX?: number;

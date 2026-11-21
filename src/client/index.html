@@ -67,7 +67,7 @@
           <canvas id="garage-preview" width="120" height="48" aria-hidden="true"></canvas>
         </div>
         <div class="garage">
-          <label>Vehicle<select id="model"></select></label>
+          <button type="button" id="car-open" class="secondary" aria-haspopup="dialog">Choose car</button>
           <button type="button" id="creator-open" class="secondary" aria-haspopup="dialog">Edit character</button>
         </div>
         <div class="account-bar">
@@ -121,6 +121,28 @@
           <div class="fields">
             <button value="save" id="creator-save">Save character</button
             ><button type="button" id="creator-cancel" class="secondary">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="car-picker" aria-labelledby="car-title">
+        <form id="car-form" method="dialog">
+          <h2 id="car-title">Your first car</h2>
+          <p class="account-hint">Handling comes with the model. Paint, roof, stripe and plate are cosmetic.</p>
+          <canvas id="car-preview" width="192" height="72" aria-hidden="true"></canvas>
+          <fieldset class="figure-tiles">
+            <legend>Model</legend>
+            <div id="model-tiles"></div>
+          </fieldset>
+          <div class="creator-fields">
+            <label>Paint<select id="paint"></select></label>
+            <label>Roof<select id="trim"></select></label>
+            <label>Stripe<select id="stripe"></select></label>
+            <label>Plate<input id="plate" maxlength="7" autocapitalize="characters" autocomplete="off" spellcheck="false" /></label>
+          </div>
+          <p id="car-error" role="alert" hidden></p>
+          <div class="fields">
+            <button value="save">Save car</button
+            ><button type="button" id="car-cancel" class="secondary">Cancel</button>
           </div>
         </form>
       </dialog>

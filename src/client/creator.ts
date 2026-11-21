@@ -42,7 +42,9 @@ export function setupCreator(save: (look: Character) => Promise<string | null>) 
   let look = remembered(),
     draft = look,
     saving = false,
-    frame = 0;
+    saved = false,
+    frame = 0,
+    onClose: ((saved: boolean) => void) | undefined;
   const tiles = new Map<keyof typeof figures, HTMLCanvasElement>();
 
   for (const [key, name] of Object.entries(figures) as [keyof typeof figures, string][]) {
@@ -92,13 +94,17 @@ export function setupCreator(save: (look: Character) => Promise<string | null>) 
       const problem = await save(draft);
       if (problem) return fail(problem);
       set(draft);
+      saved = true;
       dialog.close();
     } finally {
       saving = false;
     }
   });
   el('creator-cancel').onclick = () => dialog.close();
-  dialog.addEventListener('close', () => cancelAnimationFrame(frame));
+  dialog.addEventListener('close', () => {
+    cancelAnimationFrame(frame);
+    onClose?.(saved);
+  });
 
   function set(next: Character) {
     look = character(next);
@@ -114,11 +120,14 @@ export function setupCreator(save: (look: Character) => Promise<string | null>) 
   return {
     current: () => look,
     set,
+    // Resolves true when the player saved, false when they cancelled.
     open(start = look) {
       fail('');
+      saved = false;
       update(start);
       dialog.showModal();
       frame = requestAnimationFrame(animate);
+      return new Promise<boolean>((resolve) => (onClose = resolve));
     },
     onChange(listener: () => void) {
       onChange = listener;

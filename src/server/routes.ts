@@ -14,7 +14,7 @@ import {
   viewCommand,
 } from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
-import { character } from '../game/garage';
+import { character, livery, models } from '../game/garage';
 import {
   credentialsBody,
   LoginLimiter,
@@ -63,6 +63,7 @@ export function createRoutes(
       '/account/login',
       '/account/logout',
       '/account/character',
+      '/account/vehicles/starter',
       ...authenticatedCommands,
     ],
     bodyLimit({ maxSize: 2048, onError: (c) => c.json({ error: 'Request too large.' }, 413) }),
@@ -84,7 +85,13 @@ export function createRoutes(
     return updateView(view.data) ? c.json({}) : c.json({ error: 'View disconnected.' }, 404);
   });
   function publicUser(user: User): AccountProfile {
-    return { username: user.username, character: accounts.character(user.id) };
+    const fresh = accounts.user(user.id) ?? user;
+    return {
+      username: fresh.username,
+      character: accounts.character(fresh.id),
+      vehicles: accounts.vehicles(fresh.id),
+      activeVehicleId: fresh.active_vehicle_id,
+    };
   }
   function signedIn(c: Context<Env>) {
     return accounts.userForToken(getCookie(c, accountCookie));
@@ -136,19 +143,33 @@ export function createRoutes(
     accounts.saveCharacter(user.id, character(c.var.body));
     return c.json(publicUser(user));
   });
+  api.post('/account/vehicles/starter', (c) => {
+    const user = signedIn(c);
+    if (!user) return c.json({ error: 'Log in to keep a vehicle.' }, 401);
+    const result = accounts.claimStarter(user.id, livery(c.var.body));
+    if ('error' in result) return c.json(result, 409);
+    return c.json(publicUser(user), 201);
+  });
   api.post('/join', (c) => {
     const body = c.var.body;
     const user = signedIn(c);
     if (user) {
-      // The stored character wins over anything the request sends.
-      const look = { model: body.model, ...character(accounts.character(user.id) ?? {}) };
-      const result = room.join(user.username, look, undefined, user.id);
+      // The stored character and active vehicle win over anything the request sends.
+      const vehicle = accounts.activeVehicle(user);
+      if (!vehicle) return c.json({ error: 'Pick your first vehicle before driving.' }, 409);
+      const look = character(accounts.character(user.id) ?? {});
+      const result = room.join(user.username, look, undefined, { userId: user.id, livery: vehicle });
       return 'error' in result ? c.json(result, 409) : c.json(result, 201);
     }
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 16) : '';
     if (name && accounts.usernameTaken(name))
       return c.json({ error: 'That name belongs to a registered player. Log in or pick another.' }, 409);
-    const result = room.join(name, body);
+    // Guests drive a starter model and keep nothing.
+    const choice = livery(body);
+    if (!models[choice.model].starter) choice.model = 'hatch';
+    const result = room.join(name, { ...character(body), model: choice.model }, undefined, {
+      livery: typeof body.paint === 'string' ? choice : undefined,
+    });
     return 'error' in result ? c.json(result, 409) : c.json(result, 201);
   });
   api.on('POST', authenticatedCommands, async (c, next) => {

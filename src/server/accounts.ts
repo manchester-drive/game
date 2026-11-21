@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
-import { character, type Character } from '../game/garage';
+import { character, livery, models, type Character, type Livery } from '../game/garage';
+import type { OwnedVehicle } from '../protocol/commands';
 
 export const sessionDays = 30;
 const sessionMs = sessionDays * 24 * 60 * 60 * 1000;
@@ -105,6 +106,40 @@ export class Accounts {
            updated_at = $now`,
       )
       .run({ user: userId, now: this.now(), ...look });
+  }
+
+  vehicles(userId: string): OwnedVehicle[] {
+    const rows = this.db
+      .query(
+        `SELECT id, model, paint, trim, stripe, plate, acquired_via AS acquiredVia
+         FROM vehicles WHERE user_id = ? ORDER BY acquired_at, id`,
+      )
+      .all(userId) as (Record<keyof Livery, string> & Pick<OwnedVehicle, 'id' | 'acquiredVia'>)[];
+    return rows.map((row) => ({ id: row.id, acquiredVia: row.acquiredVia, ...livery(row) }));
+  }
+
+  activeVehicle(user: User) {
+    return this.vehicles(user.id).find((vehicle) => vehicle.id === user.active_vehicle_id) ?? null;
+  }
+
+  // The free first vehicle. The one_starter index stops a repeated request making a second.
+  claimStarter(userId: string, choice: Livery): OwnedVehicle | { error: string } {
+    if (!models[choice.model].starter) return { error: 'That vehicle is not a starter.' };
+    const id = crypto.randomUUID();
+    try {
+      this.db.transaction(() => {
+        this.db
+          .query(
+            `INSERT INTO vehicles (id, user_id, model, paint, trim, stripe, plate, acquired_via, acquired_at)
+             VALUES ($id, $user, $model, $paint, $trim, $stripe, $plate, 'starter', $now)`,
+          )
+          .run({ id, user: userId, now: this.now(), ...choice });
+        this.db.query('UPDATE users SET active_vehicle_id = ? WHERE id = ?').run(id, userId);
+      })();
+    } catch {
+      return { error: 'You already have your first vehicle.' };
+    }
+    return { id, acquiredVia: 'starter', ...choice };
   }
 
   private createSession(userId: string) {

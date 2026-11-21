@@ -6,9 +6,10 @@ import { snapshotRoadUsers, type Snapshot, type VisiblePlayer } from '../protoco
 import { cameraCells } from '../protocol/view';
 import { streetAt } from '../game/streets';
 import { createWorld, drive, walk, JUNCTION } from '../game/world';
-import type { Commands, Credentials } from '../protocol/commands';
+import type { AccountProfile, Commands, Credentials } from '../protocol/commands';
 import { setupAccount } from './account';
 import { setupChat } from './chat';
+import { setupCarPicker } from './car-picker';
 import { setupCreator } from './creator';
 import { el, notice, setupGarage, updateHud } from './hud';
 import { leaveOnPageHide, post, subscribeToRoom } from './network';
@@ -51,17 +52,35 @@ const creator = setupCreator(async (look) => {
   const result = await post('/account/character', look).catch(() => null);
   return result?.ok ? null : (result?.error ?? 'Could not save your character. Try again.');
 });
-const { outfit, refreshPreview } = setupGarage(creator.current);
+const picker = setupCarPicker(async (ride) => {
+  if (!account.current()) return null;
+  const result = await post('/account/vehicles/starter', ride).catch(() => null);
+  if (!result?.ok) return result?.error ?? 'Could not save your car. Try again.';
+  account.replace(result.data);
+  return null;
+});
+const refreshPreview = setupGarage(creator.current, picker.current);
 creator.onChange(refreshPreview);
+picker.onChange(refreshPreview);
+function activeVehicle(profile: AccountProfile | null) {
+  return profile?.vehicles.find((vehicle) => vehicle.id === profile.activeVehicleId);
+}
 const account = setupAccount((profile, signedUp) => {
   if (profile?.character) creator.set(profile.character);
-  else if (signedUp) {
-    // A new account keeps the look the player already had as a guest.
-    void post('/account/character', creator.current()).catch(() => null);
-    creator.open();
-  }
+  const vehicle = activeVehicle(profile);
+  if (vehicle) picker.set(vehicle);
+  // The first car is free once. Later cars and repaints belong in the garage.
+  el('car-open').hidden = !!vehicle;
+  if (signedUp) void welcome();
 });
+// A new account keeps the guest's look and car as the starting point for each screen.
+async function welcome() {
+  await post('/account/character', creator.current()).catch(() => null);
+  await creator.open();
+  await picker.open();
+}
 el('creator-open').onclick = () => creator.open();
+el('car-open').onclick = () => picker.open();
 // The driver's details survive a reload so a deploy can put them back in a car.
 const driverKey = 'manchester-drive:driver';
 function savedDriver(): Commands['/join'] | null {
@@ -168,9 +187,10 @@ async function join(driver: Commands['/join']) {
     updateUI();
   }
 }
-el('join').addEventListener('submit', (event) => {
+el('join').addEventListener('submit', async (event) => {
   event.preventDefault();
-  join({ name: el('name').value, ...outfit() });
+  if (account.current() && !activeVehicle(account.current()) && !(await picker.open())) return;
+  join({ name: el('name').value, ...creator.current(), ...picker.current() });
 });
 // Try once per connection, so a failed join falls back to the join form.
 function rejoin() {

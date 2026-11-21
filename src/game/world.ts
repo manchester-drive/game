@@ -392,6 +392,9 @@ export function useCar(world: World, player: Player, action: 'enter' | 'exit') {
         angle: car.angle,
         model: car.model,
         color: car.color,
+        roof: car.roof,
+        stripe: car.stripe,
+        plate: car.plate,
         speed: 0,
         rearLights: 'tail',
       };

@@ -75,6 +75,8 @@ test('sessions expire after 30 days', async () => {
 test('an account joins under its username and guests cannot borrow it', async () => {
   const { room, post, signOut } = setup();
   await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  expect((await post('/join', {})).status).toBe(409);
+  await post('/account/vehicles/starter', { model: 'hatch' });
   const first = await post('/join', { name: 'Someone else' });
   expect(first.status).toBe(201);
   const ada = room.sessionFor(first.body.token)!.player;
@@ -107,6 +109,7 @@ test('a saved character is used on join and appearance in the request is ignored
     jacket: 'plum',
     trousers: 'redSkirt',
   });
+  await post('/account/vehicles/starter', { model: 'hatch' });
   expect(saved.body.character).toMatchObject({ figure: 'feminine', hairStyle: 'ponytail' });
   const joined = await post('/join', { figure: 'masculine', jacket: 'teal', hair: 'grey' });
   expect(room.sessionFor(joined.body.token)!.player).toMatchObject({
@@ -116,4 +119,43 @@ test('a saved character is used on join and appearance in the request is ignored
     jacket: 'plum',
     trousers: 'redSkirt',
   });
+});
+
+test('the first vehicle must be a starter, is free once, and drives with its livery', async () => {
+  const { room, post } = setup();
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  expect((await post('/account/vehicles/starter', { model: 'coupe' })).status).toBe(409);
+  const first = await post('/account/vehicles/starter', {
+    model: 'van',
+    paint: 'crimson',
+    trim: 'white',
+    stripe: 'gold',
+    plate: ' ad4-x 99z!',
+  });
+  expect(first.status).toBe(201);
+  expect(first.body.vehicles).toEqual([
+    expect.objectContaining({ model: 'van', paint: 'crimson', plate: 'AD4X 99', acquiredVia: 'starter' }),
+  ]);
+  expect(first.body.activeVehicleId).toBe(first.body.vehicles[0].id);
+  const again = await post('/account/vehicles/starter', { model: 'hatch' });
+  expect(again.status).toBe(409);
+
+  const joined = await post('/join', { model: 'coupe', paint: 'snow', plate: 'FAKE' });
+  const session = room.sessionFor(joined.body.token)!;
+  expect(session.player).toMatchObject({
+    model: 'van',
+    color: '#c0403c',
+    roof: '#efefe8',
+    stripe: '#e2bb52',
+    plate: 'AD4X 99',
+  });
+  expect(room.chat(session, 'hi').color).toBe('#c0403c');
+});
+
+test('guests can only drive starter models', async () => {
+  const { room, post } = setup();
+  const coupe = await post('/join', { name: 'Mo', model: 'coupe', paint: 'sky' });
+  expect(room.sessionFor(coupe.body.token)!.player).toMatchObject({ model: 'hatch', color: '#8ba9e4' });
+  const van = await post('/join', { name: 'Lee', model: 'van' });
+  expect(room.sessionFor(van.body.token)!.player.model).toBe('van');
 });

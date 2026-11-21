@@ -1,5 +1,4 @@
 import type { MapData, Point } from '../game/map-types';
-import type { Appearance } from '../game/garage';
 import type { VisiblePlayer, Snapshot } from '../protocol/snapshots';
 import type { Pedestrian, Pose, Position, Vehicle } from '../game/game-types';
 import type { StreetObject } from '../game/streets';
@@ -14,7 +13,16 @@ import {
   overlapsTile,
   type MapChunk,
 } from '../game/region';
-import { hairColours, jackets, models, skinTones, trousers, type Character } from '../game/garage';
+import {
+  hairColours,
+  jackets,
+  liveryColours,
+  models,
+  skinTones,
+  trousers,
+  type Character,
+  type Livery,
+} from '../game/garage';
 import { signals } from '../game/world';
 
 type Context = CanvasRenderingContext2D;
@@ -490,11 +498,17 @@ function car(g: Context, v: CarSprite, local: boolean, time: number) {
   R(-5, -4, 10, 8, '#354b50');
   R(-4, -3, 2, 6, '#79959a');
   R(2, -3, 2, 6, '#a1b8b5');
-  R(-2, -4, 4, 8, v.color);
+  R(-2, -4, 4, 8, v.roof ?? v.color);
+  if (v.stripe) {
+    R(5, -1, 4, 2, v.stripe);
+    R(-9, -1, 3, 2, v.stripe);
+    if (v.model !== 'van') R(-2, -1, 4, 2, v.stripe);
+  }
   R(-2, -4, 4, 1, '#ffffff66');
   R(5, -3, 3, 1, '#ffffff66');
   if (v.model === 'van') {
-    R(-8, -4, 12, 8, v.color);
+    R(-8, -4, 12, 8, v.roof ?? v.color);
+    if (v.stripe) R(-8, -1, 12, 2, v.stripe);
     R(-7, -3, 9, 1, '#ffffff55');
     R(-7, 2, 9, 1, '#00000030');
     R(3, -3, 2, 6, '#8ba4a2');
@@ -577,13 +591,25 @@ function pedestrian(g: Context, p: Pedestrian) {
   rect(g, p.x - 1, p.y - 5, 3, 3, '#b88b68');
   rect(g, p.x - 1, p.y - 6, 3, 2, '#55483e');
 }
-export function drawGarage(canvas: HTMLCanvasElement, style: Appearance) {
+export function drawGarage(canvas: HTMLCanvasElement, look: Character, ride: Livery) {
   const g = canvas.getContext('2d')!;
   g.clearRect(0, 0, canvas.width, canvas.height);
   g.save();
   g.scale(3, 3);
-  car(g, { ...style, x: 15, y: 8, angle: 0, color: '#51ccc2' }, false, 0);
-  character(g, { ...style, x: 35, y: 8, angle: 0, speed: 0 }, 0);
+  car(g, { ...liveryColours(ride), model: ride.model, x: 15, y: 8, angle: 0 }, false, 0);
+  character(g, { ...look, x: 35, y: 8, angle: 0, speed: 0 }, 0);
+  g.restore();
+}
+
+export function drawVehicle(canvas: HTMLCanvasElement, ride: Livery) {
+  const g = canvas.getContext('2d')!;
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.save();
+  const scale = Math.floor(canvas.height / 16);
+  g.scale(scale, scale);
+  const x = canvas.width / scale / 2,
+    y = canvas.height / scale / 2;
+  car(g, { ...liveryColours(ride), model: ride.model, x, y, angle: 0 }, false, 0);
   g.restore();
 }
 
@@ -729,7 +755,10 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
     }
     for (const v of world.players) {
       if (!visible(v)) continue;
-      const str = v.id === me ? 'YOU' : v.guest ? v.name + ' · guest' : v.name;
+      const str =
+        v.id === me
+          ? 'YOU'
+          : v.name + (v.guest ? ' · guest' : '') + (v.plate ? ' · ' + v.plate : '');
       b.font = 'bold 7px monospace';
       const lw = Math.ceil(b.measureText(str).width) + 6;
       rect(b, v.x - lw / 2, v.y - 20, lw, 10, '#283730');

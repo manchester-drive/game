@@ -3,7 +3,7 @@ import { cellKey, type CellBounds } from '../game/spatial';
 import { viewCellSize } from '../protocol/view';
 import { activeCells } from './neighbourhoods';
 import type { Player, Position, World } from '../game/game-types';
-import type { GarageOptions } from '../game/garage';
+import { liveryColours, type GarageOptions, type Livery } from '../game/garage';
 import { raceCommand, withdraw } from '../game/race';
 import { COLORS, createWorld, findRaceGrid, placePlayer, step, useCar } from '../game/world';
 import type { Credentials, DoorCommand, InputCommand, RaceCommand } from '../protocol/commands';
@@ -37,23 +37,29 @@ export class GameRoom {
     name: string,
     options: GarageOptions = {},
     positions?: Iterable<number[]>,
-    userId?: string,
+    { userId, livery }: { userId?: string; livery?: Livery } = {},
   ): Credentials | { error: string } {
     const id = crypto.randomUUID();
     const usage = new Map<string, number>();
     for (const { color } of this.world.players) usage.set(color, (usage.get(color) ?? 0) + 1);
-    const color = COLORS.reduce((best, next) =>
-      (usage.get(next) ?? 0) < (usage.get(best) ?? 0) ? next : best,
-    );
+    // A chosen paint wins. Otherwise pick the least used room colour.
+    const paintwork = livery
+      ? liveryColours(livery)
+      : {
+          color: COLORS.reduce((best, next) =>
+            (usage.get(next) ?? 0) < (usage.get(best) ?? 0) ? next : best,
+          ),
+        };
     const player = placePlayer(
       id,
       name.trim().slice(0, 16) || 'Driver',
-      color,
+      paintwork.color,
       this.world,
-      options,
+      livery ? { ...options, model: livery.model } : options,
       positions,
     );
     if (!player) return { error: 'Could not find a clear starting position. Try again shortly.' };
+    Object.assign(player, paintwork);
     if (userId) {
       // An account drives one car at a time. A second tab or a rejoin replaces the first.
       for (const session of this.sessions.values())

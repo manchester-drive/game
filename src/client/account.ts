@@ -71,5 +71,5 @@ export function setupAccount(
     .then((response) => (response.ok ? response.json() : null))
     .then(show, () => show(null));
 
-  return { current: () => account };
+  return { current: () => account, replace: (profile: AccountProfile) => show(profile) };
 }

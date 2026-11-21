@@ -905,7 +905,8 @@ button.secondary {
   height: 31px;
   font-size: 0.84rem;
 }
-#creator {
+#creator,
+#car-picker {
   width: min(460px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);
   padding: 18px 20px;
@@ -914,10 +915,12 @@ button.secondary {
   background: var(--ink);
   color: var(--paper);
 }
-#creator::backdrop {
+#creator::backdrop,
+#car-picker::backdrop {
   background: rgb(0 0 0 / 0.55);
 }
-#creator h2 {
+#creator h2,
+#car-picker h2 {
   margin: 0 0 12px;
 }
 .creator-layout {
@@ -948,11 +951,13 @@ button.secondary {
   color: #c5cbbd;
   margin-bottom: 4px;
 }
-#figure-tiles {
+#figure-tiles,
+#model-tiles {
   display: flex;
   gap: 8px;
 }
-#figure-tiles label {
+#figure-tiles label,
+#model-tiles label {
   display: grid;
   justify-items: center;
   gap: 3px;
@@ -961,14 +966,17 @@ button.secondary {
   border: 2px solid transparent;
   cursor: pointer;
 }
-#figure-tiles label:has(:checked) {
+#figure-tiles label:has(:checked),
+#model-tiles label:has(:checked) {
   border-color: var(--yellow);
   color: var(--paper);
 }
-#figure-tiles label:has(:focus-visible) {
+#figure-tiles label:has(:focus-visible),
+#model-tiles label:has(:focus-visible) {
   outline: 3px solid #e9e9c4;
 }
-#figure-tiles input {
+#figure-tiles input,
+#model-tiles input {
   position: absolute;
   opacity: 0;
   pointer-events: none;
@@ -982,7 +990,8 @@ button.secondary {
   grid-template-columns: 1fr 1fr;
   gap: 6px 8px;
 }
-.creator-fields select {
+.creator-fields select,
+.creator-fields input {
   display: block;
   width: 100%;
   margin-top: 4px;
@@ -992,7 +1001,8 @@ button.secondary {
   background: #303b36;
   border: 1px solid #69746b;
 }
-#creator-error {
+#creator-error,
+#car-error {
   color: #f0a08f;
   font-size: 0.84rem;
 }
@@ -1001,4 +1011,25 @@ button.secondary {
     grid-template-columns: 1fr;
     justify-items: center;
   }
+}
+#car-open {
+  height: 31px;
+  font-size: 0.84rem;
+}
+#car-preview {
+  display: block;
+  width: 192px;
+  height: 72px;
+  margin: 0 auto 10px;
+  image-rendering: pixelated;
+  background: #3a4640;
+  border: 1px solid var(--rule);
+}
+#model-tiles small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.creator-fields input {
+  height: 31px;
+  text-transform: uppercase;
 }
