@@ -1,11 +1,12 @@
 app = "tombell-manchester-drive"
 primary_region = "lhr"
-# Fly stops the old machine with this signal once the new one passes its check.
+# Fly stops the running server with this signal before starting the new image.
 kill_signal = "SIGTERM"
 kill_timeout = "10s"
 
+# Blue-green needs a second machine, but the data volume attaches to one machine at a time.
 [deploy]
-  strategy = "bluegreen"
+  strategy = "rolling"
 
 [env]
   HOST = "0.0.0.0"

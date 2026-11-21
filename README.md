@@ -62,7 +62,7 @@ fly scale count 1
 
 The container starts as root only to give the volume to the unprivileged user, then runs the server as that user.
 
-Fly.io deploys are blue-green. The new machine must pass `/healthz` before it takes traffic. Fly then sends the old machine `SIGTERM`. The old server tells its viewers it is restarting, then closes their streams. Browsers reconnect within about a second. A browser that reaches a new build reloads the page. Drivers join again automatically, using the name, look and car kept in session storage. Accounts and their saved choices persist in SQLite. Positions, races and chat history do not carry over, because the room exists only in memory.
+Fly.io deploys are rolling, because the data volume attaches to one machine at a time. Fly sends the running server `SIGTERM`, then starts the new image on the same machine and waits for `/healthz`. The old server tells its viewers it is restarting, then closes their streams. The game is unavailable for a few seconds. Browsers keep retrying every second and reconnect once the new server is up. A browser that reaches a new build reloads the page. Drivers join again automatically, using the name, look and car kept in session storage. Accounts and their saved choices persist in SQLite. Positions, races and chat history do not carry over, because the room exists only in memory.
 
 ## Verify
 

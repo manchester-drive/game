@@ -35,34 +35,40 @@ export function subscribeToRoom(
   onDisconnect: (restarting: boolean) => void,
   currentView: () => { area: CellBounds; token?: string },
 ) {
-  const events = new EventSource(snapshotPath);
   let viewer = '',
     sent = '',
     pending = false,
     nextAttempt = 0,
     build = '',
     restarting = false;
-  // A reconnect that reaches a new deploy needs the new client and map.
-  events.addEventListener('build', (event) => {
-    if (build && build !== event.data) location.reload();
-    build = event.data;
-  });
-  events.addEventListener('restart', () => {
-    restarting = true;
-  });
-  events.addEventListener('viewer', (event) => {
-    viewer = event.data;
-    restarting = false;
-    sent = '';
-    nextAttempt = 0;
-    void updateView();
-  });
-  events.addEventListener('chat', (event) => onChat(JSON.parse(event.data)));
-  events.onerror = () => {
-    viewer = '';
-    onDisconnect(restarting);
-  };
-  events.onmessage = (event) => onSnapshot(decodeSnapshot(event.data));
+  // EventSource retries a dropped stream by itself, but gives up for good when a reconnect
+  // gets an error response, as it can while a deploy restarts the only machine.
+  function connect() {
+    const events = new EventSource(snapshotPath);
+    // A reconnect that reaches a new deploy needs the new client and map.
+    events.addEventListener('build', (event) => {
+      if (build && build !== event.data) location.reload();
+      build = event.data;
+    });
+    events.addEventListener('restart', () => {
+      restarting = true;
+    });
+    events.addEventListener('viewer', (event) => {
+      viewer = event.data;
+      restarting = false;
+      sent = '';
+      nextAttempt = 0;
+      void updateView();
+    });
+    events.addEventListener('chat', (event) => onChat(JSON.parse(event.data)));
+    events.onerror = () => {
+      viewer = '';
+      onDisconnect(restarting);
+      if (events.readyState === EventSource.CLOSED) setTimeout(connect, 1000);
+    };
+    events.onmessage = (event) => onSnapshot(decodeSnapshot(event.data));
+  }
+  connect();
 
   // Keep the event stream and chat history intact while panning or resizing.
   async function updateView() {
