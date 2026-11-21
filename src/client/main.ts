@@ -1,6 +1,6 @@
 import type { Position } from '../game/game-types';
 import { heldOnGrid } from '../game/race';
-import { clampToM60, mapChunk } from '../game/region';
+import { clampToRegion, mapChunk } from '../game/region';
 import { useBrowserMap } from './map';
 import { snapshotRoadUsers, type Snapshot, type VisiblePlayer } from '../protocol/snapshots';
 import { cameraCells } from '../protocol/view';
@@ -301,7 +301,7 @@ window.addEventListener('pagehide', () => {
   if (session) leaveOnPageHide(session.token);
 });
 function moveCamera(dx = 0, dy = 0) {
-  Object.assign(focus, clampToM60(focus.x + dx, focus.y + dy));
+  Object.assign(focus, clampToRegion(focus.x + dx, focus.y + dy));
 }
 function toggleCamera() {
   release();

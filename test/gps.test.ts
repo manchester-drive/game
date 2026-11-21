@@ -62,7 +62,11 @@ test('the shipped driving network connects the starting bays to roads across the
   const packed = await Bun.file(new URL('../src/game/map/routing.pack', import.meta.url)).bytes();
   const route = makeRouter(JSON.parse(gunzipSync(packed).toString()));
   const [x, y] = spawns[0];
-  for (const destination of [{ x: -46317, y: -6928 }, { x: 4340, y: 48487.5 }]) {
+  for (const destination of [
+    { x: -46317, y: -6928 },
+    { x: 4340, y: 48487.5 },
+    { x: 48451, y: -582 }, // Old Street, Ashton-under-Lyne
+  ]) {
     const path = route({ x, y }, destination)!;
     expect(path.length).toBeGreaterThan(2);
     expect(Math.hypot(path[0].x - x, path[0].y - y)).toBeLessThan(30);

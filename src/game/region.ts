@@ -75,7 +75,7 @@ export function mapChunk(x: number, y: number): MapChunk | undefined {
   return cached;
 }
 
-// Index ray crossings by horizontal band. Most simulation ticks are far inside the orbital.
+// Index ray crossings by horizontal band. Most simulation ticks are far from the boundary.
 const bands = new Map<number, [Point, Point][]>();
 for (let i = 0; i < boundary.length; i++) {
   const a = boundary[i],
@@ -90,7 +90,7 @@ for (let i = 0; i < boundary.length; i++) {
   }
 }
 
-export function insideM60(x: number, y: number) {
+export function insideRegion(x: number, y: number) {
   let inside = false;
   for (const [[ax, ay], [bx, by]] of bands.get(Math.floor(y / chunkSize)) ?? []) {
     if (ay > y !== by > y && x < ax + ((bx - ax) * (y - ay)) / (by - ay)) inside = !inside;
@@ -133,6 +133,6 @@ export function closestBoundaryPoint(x: number, y: number, rings: Point[][]) {
   return nearest;
 }
 
-export function clampToM60(x: number, y: number) {
-  return insideM60(x, y) ? { x, y } : closestBoundaryPoint(x, y, [boundary]);
+export function clampToRegion(x: number, y: number) {
+  return insideRegion(x, y) ? { x, y } : closestBoundaryPoint(x, y, [boundary]);
 }

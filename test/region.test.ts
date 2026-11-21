@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { insideM60, clampToM60, mapChunk } from '../src/game/region';
+import { insideRegion, clampToRegion, mapChunk } from '../src/game/region';
 import { streetAt } from '../src/game/streets';
 import { walk, drive } from '../src/game/world';
 import { useServerMap } from '../src/server/map';
@@ -15,7 +15,7 @@ const carriageways = [
 test('the M60 mainline is playable on all four sides of Manchester', () => {
   useServerMap();
   for (const [x, y, dx, dy] of carriageways) {
-    expect(insideM60(x, y)).toBe(true);
+    expect(insideRegion(x, y)).toBe(true);
     expect(streetAt(x, y)).toBe('M60');
     const car = { id: 'driver', x, y, angle: Math.atan2(dy, dx), speed: 30, color: 'red' };
     for (let tick = 0; tick < 30; tick++) drive(car, 1, 1 / 60, [], []);
@@ -23,11 +23,17 @@ test('the M60 mainline is playable on all four sides of Manchester', () => {
   }
 });
 
-test('the orbital stops walking and driving and limits free cam at the same edge', () => {
+test('Old Street in Ashton-under-Lyne town centre is inside the playable map', () => {
+  useServerMap();
+  expect(insideRegion(48451, -582)).toBe(true);
+  expect(streetAt(48451, -582)).toBe('Old Street');
+});
+
+test('the regional boundary stops walking and driving and limits free cam at the same edge', () => {
   useServerMap();
   const outside = { x: -47500, y: -6928 };
-  expect(insideM60(outside.x, outside.y)).toBe(false);
-  const edge = clampToM60(outside.x, outside.y);
+  expect(insideRegion(outside.x, outside.y)).toBe(false);
+  const edge = clampToRegion(outside.x, outside.y);
   const walker = { x: edge.x + 20, y: edge.y };
   const car = { ...walker, angle: Math.PI, id: 'driver', speed: 30, color: 'red' };
   for (let tick = 0; tick < 120; tick++) {
@@ -36,7 +42,7 @@ test('the orbital stops walking and driving and limits free cam at the same edge
   }
   expect(walker.x - edge.x).toBeWithin(2, 4);
   expect(car.x - edge.x).toBeWithin(9, 12);
-  expect(insideM60(-43000, 45000)).toBe(false); // Inside the bounding rectangle, outside the ring.
+  expect(insideRegion(-43000, 45000)).toBe(false); // Inside the bounding rectangle, outside the ring.
 });
 
 test('central trunk carriageways and outlying building walls come from the map', () => {

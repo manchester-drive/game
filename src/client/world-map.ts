@@ -1,7 +1,7 @@
 import type { Position } from '../game/game-types';
 import type { VisiblePlayer } from '../protocol/snapshots';
 import type { Gps } from './gps';
-import { boundary, insideM60 } from '../game/region';
+import { boundary, insideRegion } from '../game/region';
 import { bindMapGestures } from './world-map-gestures';
 import { makeWorldMapStreets, type MapView } from './world-map-streets';
 
@@ -98,10 +98,10 @@ export function setupWorldMap(releaseControls: () => void, gps: Gps) {
   zoomOut.onclick = () => zoom(0.5);
   const releasePointers = bindMapGestures(plot, changeView, (point) => {
     const x = view.x + point.x / view.scale, y = view.y + point.y / view.scale;
-    if (insideM60(x, y)) {
+    if (insideRegion(x, y)) {
       gps.setDestination({ x, y });
       hint = '';
-    } else hint = 'Choose a destination inside the M60.';
+    } else hint = 'Choose a destination inside the playable area.';
     draw();
   });
   clear.onclick = () => {

@@ -15,9 +15,9 @@ import {
 } from './streets';
 import {
   boundary,
-  clampToM60,
+  clampToRegion,
   closestBoundaryPoint,
-  insideM60,
+  insideRegion,
   mapChunk,
   pointInRing,
   type MapChunk,
@@ -218,8 +218,8 @@ function obstacle(
   body: Box,
   vehicle = false,
 ): Hit | null {
-  if (!insideM60(v.x, v.y)) {
-    const closest = clampToM60(v.x, v.y);
+  if (!insideRegion(v.x, v.y)) {
+    const closest = clampToRegion(v.x, v.y);
     const dx = v.x - closest.x,
       dy = v.y - closest.y,
       d = Math.hypot(dx, dy) || 1;
@@ -658,7 +658,7 @@ export function step(
       const next = { x: p.x + nx * side * 20 * elapsed, y: p.y + ny * side * 20 * elapsed };
       const bounds = personBox(next);
       if (
-        insideM60(next.x, next.y) &&
+        insideRegion(next.x, next.y) &&
         !wallContact(bounds) &&
         !vehicles.some((v) => overlap(bounds, vehicleBox(v))) &&
         !onFoot.some((other) => overlap(bounds, personBox(other)))

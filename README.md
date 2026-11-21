@@ -1,6 +1,6 @@
 # Manchester Drive
 
-Start at Piccadilly Gardens or another area of Greater Manchester and explore as far as the M60 on streets drawn from OpenStreetMap. One Bun process hosts a shared room with no fixed player limit. Drivers start on the clear street nearest their chosen area. Piccadilly starts in the usual bays.
+Start at Piccadilly Gardens or another area of Greater Manchester and explore the streets of Manchester and Ashton-under-Lyne using OpenStreetMap data. One Bun process hosts a shared room with no fixed player limit. Drivers start on the clear street nearest their chosen area. Piccadilly starts in the usual bays.
 
 ## Play
 
@@ -25,9 +25,9 @@ Select **Sign up or log in** to keep a username, character, vehicles and startin
 
 Select **Free cam** to explore before joining, while driving or on foot. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. If you already have a car, it coasts while the camera is detached.
 
-Select **World map** or press **M** to see everyone inside the M60. Arrows show drivers, dots show players on foot and a gold ring marks you. Select a marker to follow players, or explore with the **+** and **−** buttons, mouse wheel or pinch gesture. Drag to pan. Individual streets and their names appear as you zoom into a neighbourhood. **Whole region** restores the overview. **M**, **Esc** or **Close** returns to the game.
+Select **World map** or press **M** to see everyone in the playable area. Arrows show drivers, dots show players on foot and a gold ring marks you. Select a marker to follow players, or explore with the **+** and **−** buttons, mouse wheel or pinch gesture. Drag to pan. Individual streets and their names appear as you zoom into a neighbourhood. **Whole region** restores the overview. **M**, **Esc** or **Close** returns to the game.
 
-Tap or click a point inside the M60 to set a private **GPS destination**. The blue line leads to the drivable road nearest the pin. While driving, the street display shows upcoming turns and distance remaining. GPS recalculates if you leave the route. Tap a new point to move the destination or select **Clear GPS** to end guidance.
+Tap or click a point in the playable area to set a private **GPS destination**. The blue line leads to the drivable road nearest the pin. While driving, the street display shows upcoming turns and distance remaining. GPS recalculates if you leave the route. Tap a new point to move the destination or select **Clear GPS** to end guidance.
 
 Click the chat field or press **T** to type, **Enter** to send and **Esc** to return to the game. Press **Alt+Enter** (**Option+Return** on Mac) to switch between Global and Local during play or while typing. **Global** messages reach everyone, including spectators. The room keeps the most recent 50 global messages until the server restarts.
 
@@ -113,7 +113,7 @@ Cars and walkers collide with buildings, vehicles, other players and the edge of
 
 ## Map data
 
-The playable area covers about 202.5 km² inside and along the M60, north up at five game pixels per metre. The boundary follows the mapped motorway and its connecting ramps, with a shoulder outside the carriageways so you can drive the orbital. Traffic and the checkpoint race run around Piccadilly Gardens and the Northern Quarter.
+The playable area covers about 225.8 km², with north up at five game pixels per metre. It includes the streets inside the M60, the motorway itself and a 3 km radius around Ashton-under-Lyne town centre. Traffic and the checkpoint race run around Piccadilly Gardens and the Northern Quarter.
 
 Street geometry, buildings, paths, trees, tram tracks, parks and water come from OpenStreetMap. The importer keeps individual carriageways, motorway links and pedestrianised streets. It uses mapped widths where available and estimates the rest from lanes and street class. The renderer uses mapped road layers at bridges and tunnels. Driving physics remain two-dimensional.
 

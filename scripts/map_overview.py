@@ -15,7 +15,7 @@ def path(coords):
 def write_overview(source, edge, target):
     layers = defaultdict(list)
     places = {"Piccadilly Gardens": xy(-2.2371, 53.4811)}
-    names = {"Prestwich", "Failsworth", "Didsbury", "Stretford", "Eccles", "Salford"}
+    names = {"Prestwich", "Failsworth", "Didsbury", "Stretford", "Eccles", "Salford", "Ashton-under-Lyne"}
     features = osmium.FileProcessor(source).with_locations().with_filter(
         osmium.filter.KeyFilter("highway", "waterway", "place"))
     for f in features:
@@ -37,7 +37,7 @@ def write_overview(source, edge, target):
 
     left, top, right, bottom = map(round, edge.bounds)
     svg = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{left} {top} {right-left} {bottom-top}">',
-           '<title>Greater Manchester inside the M60</title>',
+           '<title>Manchester and Ashton-under-Lyne</title>',
            '<g id="terrain">',
            f'<path fill="#39463e" d="{path(edge.exterior.coords)}Z"/>']
     for layer, ink, width in [("water", "#6498a2", 1.8), ("primary", "#788075", 1),

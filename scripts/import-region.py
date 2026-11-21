@@ -81,7 +81,9 @@ def encoded(value):
 
 
 def build(source):
-    edge = motorway_edge(source)
+    # A 3 km radius around the OSM town centre overlaps the M60 at junction 23.
+    ashton = Point(xy(-2.0986910, 53.4865407)).buffer(3000 * SCALE)
+    edge = motorway_edge(source).union(ashton)
     region = prep(edge.buffer(MARGIN))
     tiles = {}
     x0, y0, x1, y1 = map(int, edge.bounds)
