@@ -23,10 +23,12 @@ test('the M60 mainline is playable on all four sides of Manchester', () => {
   }
 });
 
-test('Old Street in Ashton-under-Lyne town centre is inside the playable map', () => {
+test('mapped streets are playable from Ashton town centre out to Matley Lane', () => {
   useServerMap();
   expect(insideRegion(48451, -582)).toBe(true);
   expect(streetAt(48451, -582)).toBe('Old Street');
+  expect(insideRegion(69950, 10378)).toBe(true);
+  expect(streetAt(69950, 10378)).toBe('Matley Lane');
 });
 
 test('the regional boundary stops walking and driving and limits free cam at the same edge', () => {

@@ -66,6 +66,7 @@ test('the shipped driving network connects the starting bays to roads across the
     { x: -46317, y: -6928 },
     { x: 4340, y: 48487.5 },
     { x: 48451, y: -582 }, // Old Street, Ashton-under-Lyne
+    { x: 69950, y: 10378 }, // Matley Lane, 4.8 km from Ashton town centre
   ]) {
     const path = route({ x, y }, destination)!;
     expect(path.length).toBeGreaterThan(2);

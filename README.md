@@ -113,7 +113,7 @@ Cars and walkers collide with buildings, vehicles, other players and the edge of
 
 ## Map data
 
-The playable area covers about 225.8 km², with north up at five game pixels per metre. It includes the streets inside the M60, the motorway itself and a 3 km radius around Ashton-under-Lyne town centre. Traffic and the checkpoint race run around Piccadilly Gardens and the Northern Quarter.
+The playable area covers about 261.8 km², with north up at five game pixels per metre. It includes the streets inside the M60, the motorway itself and a 5 km radius around Ashton-under-Lyne town centre. Traffic and the checkpoint race run around Piccadilly Gardens and the Northern Quarter.
 
 Street geometry, buildings, paths, trees, tram tracks, parks and water come from OpenStreetMap. The importer keeps individual carriageways, motorway links and pedestrianised streets. It uses mapped widths where available and estimates the rest from lanes and street class. The renderer uses mapped road layers at bridges and tunnels. Driving physics remain two-dimensional.
 
