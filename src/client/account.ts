@@ -34,6 +34,8 @@ export function setupAccount(
 
   el('account-open').onclick = () => {
     fail('');
+    // Offer the guest name as the new username.
+    if (!el('account-username').value) el('account-username').value = el('name').value.trim();
     dialog.showModal();
   };
   el('account-cancel').onclick = () => dialog.close();

@@ -62,6 +62,8 @@ export interface Commands {
   '/account/logout': Record<string, never>;
   '/account/character': Character;
   '/account/vehicles/starter': Livery;
+  '/account/vehicles/active': { id: string };
+  '/account/vehicles/paint': Livery & { id: string };
   '/account/area': { area: StartArea };
   '/view': z.input<typeof viewCommand>;
   '/join': Character & Partial<Livery> & { name: string; area?: StartArea };

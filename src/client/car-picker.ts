@@ -19,7 +19,10 @@ function remembered(): Livery {
 }
 
 // Picks a starter model and its livery. Save decides where it goes: the account or this browser.
-export function setupCarPicker(save: (ride: Livery) => Promise<string | null>) {
+// Repainting an owned vehicle keeps its model, so the model tiles are hidden.
+export function setupCarPicker(
+  save: (ride: Livery, repaintId: string | undefined) => Promise<string | null>,
+) {
   const dialog = el('car-picker'),
     form = el('car-form'),
     error = el('car-error');
@@ -27,6 +30,7 @@ export function setupCarPicker(save: (ride: Livery) => Promise<string | null>) {
     draft = ride,
     saving = false,
     saved = false,
+    repaintId: string | undefined,
     onChange: (() => void) | undefined,
     onClose: ((saved: boolean) => void) | undefined;
 
@@ -71,9 +75,9 @@ export function setupCarPicker(save: (ride: Livery) => Promise<string | null>) {
     saving = true;
     fail('');
     try {
-      const problem = await save(draft);
+      const problem = await save(draft, repaintId);
       if (problem) return fail(problem);
-      set(draft);
+      if (!repaintId) set(draft);
       saved = true;
       dialog.close();
     } finally {
@@ -97,11 +101,14 @@ export function setupCarPicker(save: (ride: Livery) => Promise<string | null>) {
     current: () => ride,
     set,
     // Resolves true when the player saved a car, false when they cancelled.
-    open(start = ride) {
+    open(start = ride, repaint?: string) {
       fail('');
       saved = false;
-      // Only starters can be picked here, so a stored model outside them falls back.
-      update(starterModels.includes(start.model) ? start : { ...start, model: 'hatch' });
+      repaintId = repaint;
+      el('car-title').textContent = repaint ? 'Repaint ' + models[start.model].name.toLowerCase() : 'Your first car';
+      form.querySelector<HTMLElement>('.figure-tiles')!.hidden = !!repaint;
+      // Only starters can be picked as a first car, so a stored model outside them falls back.
+      update(repaint || starterModels.includes(start.model) ? start : { ...start, model: 'hatch' });
       dialog.showModal();
       return new Promise<boolean>((resolve) => (onClose = resolve));
     },

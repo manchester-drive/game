@@ -127,6 +127,29 @@ export class Accounts {
     return this.vehicles(user.id).find((vehicle) => vehicle.id === user.active_vehicle_id) ?? null;
   }
 
+  useVehicle(userId: string, vehicleId: string) {
+    return (
+      this.db
+        .query(
+          `UPDATE users SET active_vehicle_id = $vehicle WHERE id = $user
+           AND EXISTS (SELECT 1 FROM vehicles WHERE id = $vehicle AND user_id = $user)`,
+        )
+        .run({ user: userId, vehicle: vehicleId }).changes > 0
+    );
+  }
+
+  // Repainting is free and leaves the model, and so the handling, unchanged.
+  repaint(userId: string, vehicleId: string, { paint, trim, stripe, plate }: Livery) {
+    return (
+      this.db
+        .query(
+          `UPDATE vehicles SET paint = $paint, trim = $trim, stripe = $stripe, plate = $plate
+           WHERE id = $vehicle AND user_id = $user`,
+        )
+        .run({ user: userId, vehicle: vehicleId, paint, trim, stripe, plate }).changes > 0
+    );
+  }
+
   // The free first vehicle. The one_starter index stops a repeated request making a second.
   claimStarter(userId: string, choice: Livery): OwnedVehicle | { error: string } {
     if (!models[choice.model].starter) return { error: 'That vehicle is not a starter.' };

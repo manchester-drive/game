@@ -1,6 +1,6 @@
 # Manchester Drive
 
-Start at Piccadilly Gardens and explore Greater Manchester as far as the M60 on streets drawn from OpenStreetMap. One Bun process hosts a shared room with no fixed player limit. New drivers start in the Piccadilly bays or on a nearby clear street when the bays are occupied.
+Start at Piccadilly Gardens or another area of Greater Manchester and explore as far as the M60 on streets drawn from OpenStreetMap. One Bun process hosts a shared room with no fixed player limit. Drivers start on the clear street nearest their chosen area. Piccadilly starts in the usual bays.
 
 ## Play
 
@@ -11,7 +11,17 @@ bun install --frozen-lockfile
 bun start
 ```
 
-Open [the game](http://127.0.0.1:4173) in two browser windows, choose a name, vehicle, jacket and skin tone, then select **Drive**. The hatchback has balanced handling, the sports coupé accelerates faster and the panel van is longer with a wider turning circle. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or **Enter car** to drive again. Other players can see your character and parked car. **Leave game** removes your character and car from the room.
+Open [the game](http://127.0.0.1:4173) in two browser windows. Play as a guest or sign up, then select **Drive**. The hatchback has balanced handling and the panel van is longer with a wider turning circle. The faster sports coupé is not a starter, so nobody can pick it yet. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or **Enter car** to drive again. Other players can see your character and parked car. **Leave game** removes your character and car from the room.
+
+## Guests and accounts
+
+Guests choose a name, a character, a starter car and a starting area each visit. Guest names show a **guest** tag above the car, in chat and on the world map, and cannot match a registered username. Guests save nothing on the server. The browser remembers their look and car.
+
+Select **Sign up or log in** to keep a username, character, vehicles and starting area. A new account starts from the guest's current name, look and car, then walks through **Edit character**, **Your first car** and **Where to start**. Your username is your in-game and chat name. Only one car per account can be in the room; joining from a second tab replaces the first. There is no password reset yet.
+
+**Edit character** picks a feminine or masculine figure, a hair style, and hair, skin, jacket and lower colours, including skirts. The figure only changes the sprite. **Your first car** picks the free hatchback or panel van with a paint, roof, stripe and a plate of up to seven characters shown on your name tag. Paint also colours your chat name. Each account gets one free starter. Returning players open **Garage** to choose which owned vehicle to drive and to repaint it for free. **Start** picks one of eight areas on the map: Piccadilly, Deansgate, Ancoats, the Etihad, Salford Quays, Old Trafford, Chorlton or Didsbury.
+
+## Explore
 
 Select **Free cam** to explore before joining, while driving or on foot. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. If you already have a car, it coasts while the camera is detached.
 
@@ -43,7 +53,7 @@ Both drivers open the host computer's LAN address on port 4174. Set `PORT` to us
 
 For development, `bun run dev` watches the server and client sources. For production, `bun run build` creates a standalone executable for the build platform at `dist/manchester-drive`. The Dockerfile builds the Linux executable for Fly.io. Both modes use the same `HOST` and `PORT` settings.
 
-The server keeps accounts in SQLite at `DATABASE_PATH`, which defaults to `data/game.db`. Migrations run at startup. On Fly.io the database lives on a volume mounted at `/data`. Create the volume once before the first deploy and keep a single machine.
+The server keeps accounts in SQLite at `DATABASE_PATH`, which defaults to `data/game.db`. Migrations run at startup. Passwords are hashed with argon2id, and login sets a 30-day `HttpOnly` session cookie whose SHA-256 is the only copy the database keeps. Failed logins are rate-limited in memory per IP and per username. The cookie is `Secure` over HTTPS and on loopback, so plain-HTTP LAN rooms still keep sessions. On Fly.io the database lives on a volume mounted at `/data`. Create the volume once before the first deploy and keep a single machine.
 
 ```fish
 fly volumes create data --size 1 --region lhr
@@ -52,7 +62,7 @@ fly scale count 1
 
 The container starts as root only to give the volume to the unprivileged user, then runs the server as that user.
 
-Fly.io deploys are blue-green. The new machine must pass `/healthz` before it takes traffic. Fly then sends the old machine `SIGTERM`. The old server tells its viewers it is restarting, then closes their streams. Browsers reconnect within about a second. A browser that reaches a new build reloads the page. Drivers join again automatically, using the name and outfit kept in session storage. Positions, races and chat history do not carry over, because the room exists only in memory.
+Fly.io deploys are blue-green. The new machine must pass `/healthz` before it takes traffic. Fly then sends the old machine `SIGTERM`. The old server tells its viewers it is restarting, then closes their streams. Browsers reconnect within about a second. A browser that reaches a new build reloads the page. Drivers join again automatically, using the name, look and car kept in session storage. Accounts and their saved choices persist in SQLite. Positions, races and chat history do not carry over, because the room exists only in memory.
 
 ## Verify
 
@@ -61,7 +71,7 @@ bun run typecheck
 bun test
 ```
 
-The tests cover driving and reversing, collisions and recovery, clear spawns, traffic signals, pedestrian crossings, full driving laps, turning traffic, race staging, directional checkpoints, finish order and two clients observing the same server state.
+The tests cover signup, login, rate limits and session expiry, joining with a saved character and vehicle, reserved guest names, character fallbacks and sprites, the starter-only first car, starting areas, the garage, driving and reversing, collisions and recovery, clear spawns, traffic signals, pedestrian crossings, full driving laps, turning traffic, race staging, directional checkpoints, finish order and two clients observing the same server state.
 
 For a playtest, leave one browser on Piccadilly and pan north in the other to watch traffic on Shudehill. Bring the cameras back together at the Lever Street crossing near Dale Street. Check that both drivers see the same pedestrian and waiting traffic. Watch the gap between queued cars at a red light. Tap a parked car, then try a faster bump and a glancing hit against a building. Check both views as one driver leaves and rejoins.
 
@@ -89,9 +99,9 @@ The game runs as one Bun application. Its source is organised by responsibility.
 | Directory | Responsibility |
 | --- | --- |
 | `src/client/` | Browser entry point, controls, camera, HUD, canvas rendering and network client |
-| `src/game/` | World simulation, physics, races, garage choices and the generated Manchester map shared by client and server |
+| `src/game/` | World simulation, physics, races, character and vehicle catalogues, starting areas and the generated Manchester map shared by client and server |
 | `src/protocol/` | Command schemas, join credentials and the world snapshot format |
-| `src/server/` | The live game room, Hono command routes and Bun HTTP and event-stream handling |
+| `src/server/` | The live game room, Hono command and account routes, SQLite storage and Bun HTTP and event-stream handling |
 
 The HTTP routes validate incoming commands and pass them to the room. The room owns player sessions, input ordering and simulation time. It can run directly in a test with a controlled clock.
 

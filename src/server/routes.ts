@@ -66,6 +66,8 @@ export function createRoutes(
       '/account/logout',
       '/account/character',
       '/account/vehicles/starter',
+      '/account/vehicles/active',
+      '/account/vehicles/paint',
       '/account/area',
       ...authenticatedCommands,
     ],
@@ -151,6 +153,22 @@ export function createRoutes(
     const user = signedIn(c);
     if (!user) return c.json({ error: 'Log in to save a starting area.' }, 401);
     accounts.saveStartArea(user.id, startArea(c.var.body.area));
+    return c.json(publicUser(user));
+  });
+  api.post('/account/vehicles/active', (c) => {
+    const user = signedIn(c);
+    if (!user) return c.json({ error: 'Log in to use your garage.' }, 401);
+    const { id } = c.var.body;
+    if (typeof id !== 'string' || !accounts.useVehicle(user.id, id))
+      return c.json({ error: 'That vehicle is not in your garage.' }, 404);
+    return c.json(publicUser(user));
+  });
+  api.post('/account/vehicles/paint', (c) => {
+    const user = signedIn(c);
+    if (!user) return c.json({ error: 'Log in to use your garage.' }, 401);
+    const { id } = c.var.body;
+    if (typeof id !== 'string' || !accounts.repaint(user.id, id, livery(c.var.body)))
+      return c.json({ error: 'That vehicle is not in your garage.' }, 404);
     return c.json(publicUser(user));
   });
   api.post('/account/vehicles/starter', (c) => {

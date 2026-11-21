@@ -6,7 +6,9 @@ import { drawGarage } from './renderer';
 export function el(
   id: 'bee' | 'map' | 'garage-preview' | 'creator-preview' | 'car-preview',
 ): HTMLCanvasElement;
-export function el(id: 'account-dialog' | 'creator' | 'car-picker' | 'area-picker'): HTMLDialogElement;
+export function el(
+  id: 'account-dialog' | 'creator' | 'car-picker' | 'area-picker' | 'garage',
+): HTMLDialogElement;
 export function el(id: 'account-form' | 'creator-form' | 'car-form' | 'area-form'): HTMLFormElement;
 export function el(
   id: 'paint' | 'trim' | 'stripe' | 'jacket' | 'skin' | 'hairStyle' | 'hair' | 'trousers' | 'chat-channel',

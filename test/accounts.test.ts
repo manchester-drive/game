@@ -179,3 +179,23 @@ test('guests choose a starting area each time and accounts keep theirs', async (
   const ada = await post('/join', { area: 'didsbury' });
   expect(near(ada.body.token, 'chorlton')).toBe(true);
 });
+
+test('the garage switches between owned vehicles and repaints without changing the model', async () => {
+  const { post, signOut } = setup();
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  const { body } = await post('/account/vehicles/starter', { model: 'van', paint: 'teal' });
+  const [van] = body.vehicles;
+  const repainted = await post('/account/vehicles/paint', {
+    id: van.id,
+    model: 'coupe',
+    paint: 'crimson',
+    plate: 'ada 1',
+  });
+  expect(repainted.body.vehicles[0]).toMatchObject({ model: 'van', paint: 'crimson', plate: 'ADA 1' });
+  expect((await post('/account/vehicles/active', { id: van.id })).status).toBe(200);
+
+  signOut();
+  await post('/account/signup', { username: 'Mona', password: 'correct horse' });
+  expect((await post('/account/vehicles/active', { id: van.id })).status).toBe(404);
+  expect((await post('/account/vehicles/paint', { id: van.id, paint: 'snow' })).status).toBe(404);
+});

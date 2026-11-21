@@ -12,6 +12,8 @@ import { setupChat } from './chat';
 import { setupAreaPicker } from './area-picker';
 import { setupCarPicker } from './car-picker';
 import { setupCreator } from './creator';
+import { setupOwnedVehicles } from './garage';
+import { livery } from '../game/garage';
 import { el, notice, setupGarage, updateHud } from './hud';
 import { leaveOnPageHide, post, subscribeToRoom } from './network';
 import { makeRenderer, viewport } from './renderer';
@@ -53,11 +55,15 @@ const creator = setupCreator(async (look) => {
   const result = await post('/account/character', look).catch(() => null);
   return result?.ok ? null : (result?.error ?? 'Could not save your character. Try again.');
 });
-const picker = setupCarPicker(async (ride) => {
+const picker = setupCarPicker(async (ride, repaintId) => {
   if (!account.current()) return null;
-  const result = await post('/account/vehicles/starter', ride).catch(() => null);
+  const request = repaintId
+    ? post('/account/vehicles/paint', { ...ride, id: repaintId })
+    : post('/account/vehicles/starter', ride);
+  const result = await request.catch(() => null);
   if (!result?.ok) return result?.error ?? 'Could not save your car. Try again.';
   account.replace(result.data);
+  garage.refresh();
   return null;
 });
 // Guests pick an area each visit. Accounts keep their choice.
@@ -77,8 +83,8 @@ const account = setupAccount((profile, signedUp) => {
   const vehicle = activeVehicle(profile);
   if (vehicle) picker.set(vehicle);
   areas.set(profile?.startArea ?? 'piccadilly');
-  // The first car is free once. Later cars and repaints belong in the garage.
-  el('car-open').hidden = !!vehicle;
+  // The first car is free once. After that the garage switches cars and repaints them.
+  el('car-open').textContent = vehicle ? 'Garage' : 'Choose car';
   if (signedUp) void welcome();
 });
 // A new account keeps the guest's look and car as the starting point for each screen.
@@ -89,7 +95,10 @@ async function welcome() {
   await areas.open();
 }
 el('creator-open').onclick = () => creator.open();
-el('car-open').onclick = () => picker.open();
+const garage = setupOwnedVehicles(account.current, account.replace, (vehicle) =>
+  picker.open(livery(vehicle), vehicle.id),
+);
+el('car-open').onclick = () => (activeVehicle(account.current()) ? garage.open() : picker.open());
 el('area-open').onclick = () => areas.open();
 // The driver's details survive a reload so a deploy can put them back in a car.
 const driverKey = 'manchester-drive:driver';

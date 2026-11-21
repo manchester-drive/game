@@ -907,7 +907,8 @@ button.secondary {
 }
 #creator,
 #car-picker,
-#area-picker {
+#area-picker,
+#garage {
   width: min(460px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);
   padding: 18px 20px;
@@ -918,12 +919,14 @@ button.secondary {
 }
 #creator::backdrop,
 #car-picker::backdrop,
-#area-picker::backdrop {
+#area-picker::backdrop,
+#garage::backdrop {
   background: rgb(0 0 0 / 0.55);
 }
 #creator h2,
 #car-picker h2,
-#area-picker h2 {
+#area-picker h2,
+#garage h2 {
   margin: 0 0 12px;
 }
 .creator-layout {
@@ -1006,7 +1009,8 @@ button.secondary {
 }
 #creator-error,
 #car-error,
-#area-error {
+#area-error,
+#garage-error {
   color: #f0a08f;
   font-size: 0.84rem;
 }
@@ -1099,4 +1103,40 @@ button.secondary {
   position: absolute;
   opacity: 0;
   pointer-events: none;
+}
+#garage-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+#garage-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid var(--rule);
+}
+#garage-list li.active {
+  border-color: var(--yellow);
+}
+#garage-list canvas {
+  width: 96px;
+  height: 36px;
+  image-rendering: pixelated;
+  background: #3a4640;
+}
+#garage-list .vehicle-name {
+  flex: 1;
+  font-size: 0.88rem;
+}
+#garage-list small {
+  display: block;
+  color: var(--muted);
+}
+#garage-list button {
+  height: 31px;
+  padding: 0 10px;
+  font-size: 0.82rem;
 }
