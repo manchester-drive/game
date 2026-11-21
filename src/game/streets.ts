@@ -60,7 +60,7 @@ export function streetAt(x: number, y: number) {
 
 // Traverse joined OSM ways in route order. Offset into the left lane of wider roads
 // and round corners inside the junction so traffic changes heading over several ticks.
-function makeCircuit(legs: RouteLeg[]) {
+function makeCircuit(legs: RouteLeg[], maxOffset: number) {
   const vertices: { p: Point; road: Road }[] = [];
   for (const [id, first, last] of legs) {
     const road = byId.get(id)!,
@@ -75,7 +75,7 @@ function makeCircuit(legs: RouteLeg[]) {
   const lane = vertices.map(({ p, road }, i): Point => {
     const prev = (i + vertices.length - 1) % vertices.length;
     const offset = (r: Road) =>
-      r.oneway && r.width < 30 ? 0 : Math.min(9, r.width / 4, Math.max(2, r.width / 2 - 7));
+      r.oneway && r.width < 30 ? 0 : Math.min(maxOffset, r.width / 4, Math.max(2, r.width / 2 - 7));
     const a = edges[prev],
       b = edges[i];
     return [
@@ -144,7 +144,8 @@ function makeCircuit(legs: RouteLeg[]) {
   return { length, pose, nearest, points, wrap };
 }
 
-export const circuits = routes.map(makeCircuit);
+// The narrow Northern Quarter lanes run close to mapped building frontages.
+export const circuits = routes.map((legs, i) => makeCircuit(legs, i < 2 ? 9 : 4));
 export const circuit = circuits[0];
 export const JUNCTION = circuit.pose(65);
 

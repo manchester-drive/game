@@ -1,4 +1,5 @@
 import type { Player, Position, Racer, TrafficCar, Vehicle, World } from './game-types';
+import { SpatialGrid } from './spatial';
 import type { GarageOptions } from './garage';
 
 // World coordinates are pixels, heading is measured clockwise from east.
@@ -22,7 +23,7 @@ import {
   type MapChunk,
 } from './region';
 import type { Point } from './map-types';
-import { garden_walks as gardenWalks } from './manchester-map';
+import { walking_paths as walkingPaths } from './manchester-map';
 import { checkGate, heldOnGrid, withdraw } from './race';
 import { appearance, models } from './garage';
 export { WIDTH, HEIGHT, JUNCTION, signalPosts } from './streets';
@@ -528,10 +529,10 @@ function followTraffic(car: TrafficCar, vehicles: (Vehicle | TrafficCar)[], limi
   }
   return { travel, limit };
 }
-// Walkers cross at mapped crossing nodes. Other pedestrians follow the paths in the gardens.
+// Walkers cross at mapped crossing nodes. Other pedestrians follow mapped paths and pavements.
 const walks = [
   ...crosswalks.map((c) => c.walk),
-  ...gardenWalks.map((points) => [...points, ...points.slice(1, -1).reverse()]),
+  ...walkingPaths.map((points) => [...points, ...points.slice(1, -1).reverse()]),
 ];
 const stops = circuits.map((route) =>
   crosswalks.flatMap((crossing, index) => {
@@ -543,7 +544,7 @@ const stops = circuits.map((route) =>
 );
 export function createWorld(): World {
   const traffic = circuits.flatMap((route, lane) => {
-    const count = lane === 0 ? 8 : 3;
+    const count = lane === 0 ? 8 : lane === 1 ? 3 : Math.max(3, Math.floor(route.length / 280));
     return Array.from({ length: count }, (_, i) => {
       const d = (route.length * (i + 0.65)) / count;
       return {
@@ -557,28 +558,62 @@ export function createWorld(): World {
       };
     });
   });
-  const people = walks.map((route, i) => ({
-    id: 'p' + i,
-    route: i,
-    next: 1,
-    x: route[0][0],
-    y: route[0][1],
-    crossing: false,
-    color: COLORS[(i + 2) % 8],
-  }));
+  const people = walks.flatMap((route, i) => {
+    const lengths = route.map(([x, y], j) => {
+      const next = route[(j + 1) % route.length];
+      return Math.hypot(next[0] - x, next[1] - y);
+    });
+    const length = lengths.reduce((sum, d) => sum + d, 0);
+    const count = i < crosswalks.length ? 1 : Math.max(1, Math.floor(length / 220));
+    return Array.from({ length: count }, (_, j) => {
+      let d = (length * j) / count;
+      let leg = 0;
+      while (leg < route.length - 1 && d >= lengths[leg]) {
+        d -= lengths[leg];
+        leg++;
+      }
+      const next = (leg + 1) % route.length,
+        t = d / (lengths[leg] || 1);
+      return {
+        id: j === 0 ? 'p' + i : 'p' + i + '-' + j,
+        route: i,
+        next,
+        x: route[leg][0] + (route[next][0] - route[leg][0]) * t,
+        y: route[leg][1] + (route[next][1] - route[leg][1]) * t,
+        crossing: false,
+        color: COLORS[(i + j + 2) % COLORS.length],
+      };
+    });
+  });
   return { time: 0, players: [], traffic, people, race: null };
 }
 
-export function step(world: World, inputs: ReadonlyMap<string, number>, dt: number) {
+export function step(
+  world: World,
+  inputs: ReadonlyMap<string, number>,
+  dt: number,
+  npcStep?: (actor: Position) => number,
+) {
   const tickStart = world.time;
   world.time += dt;
   if (world.race?.phase === 'countdown' && tickStart >= world.race.startAt!)
     world.race.phase = 'racing';
-  const lights = signals(world.time),
-    { vehicles, people } = roadUsers(world);
+  const lights = signals(world.time);
+  const users = roadUsers(world);
+  const cars = new SpatialGrid(128, users.vehicles);
+  const walkers = new SpatialGrid(128, users.people);
+  const footPlayers = new SpatialGrid(
+    128,
+    world.players.filter((player) => player.parkedCar),
+  );
+  // Two vehicle corner radii plus travel during one step fit in 32 pixels.
   for (const car of world.players) {
+    const vehicles = cars.near(car, 32),
+      people = walkers.near(car, 32);
     if (car.parkedCar) {
       walk(car, inputs.get(car.id) ?? 0, dt, vehicles, people);
+      walkers.update(car);
+      footPlayers.update(car);
       continue;
     }
     if (heldOnGrid(world.race, car.id)) {
@@ -587,13 +622,19 @@ export function step(world: World, inputs: ReadonlyMap<string, number>, dt: numb
     }
     const { x, y } = car;
     drive(car, inputs.get(car.id) ?? 0, dt, vehicles, people);
+    cars.update(car);
     checkGate(world.race, car, x, y, tickStart, dt);
   }
 
   for (const p of world.people) {
+    const elapsed = npcStep ? npcStep(p) : dt;
+    if (!elapsed) continue;
+    const vehicles = cars.near(p, 32);
+    const onFoot = footPlayers.near(p, 32);
     // Give a driver room to pass after contact, even when the walker is
     // waiting for the crossing signal. Move towards the nearer side of the car.
-    const approaching = world.players.find((car) => {
+    const approaching = vehicles.find((car) => {
+      if (!('parkedCar' in car)) return false;
       const keys = inputs.get(car.id) ?? 0;
       const pedal = Number(!!(keys & 1)) - Number(!!(keys & 2));
       if (!pedal || car.parkedCar) return false;
@@ -610,15 +651,16 @@ export function step(world: World, inputs: ReadonlyMap<string, number>, dt: numb
       const nx = -Math.sin(approaching.angle),
         ny = Math.cos(approaching.angle);
       const side = (p.x - approaching.x) * nx + (p.y - approaching.y) * ny < 0 ? -1 : 1;
-      const next = { x: p.x + nx * side * 20 * dt, y: p.y + ny * side * 20 * dt };
+      const next = { x: p.x + nx * side * 20 * elapsed, y: p.y + ny * side * 20 * elapsed };
       const bounds = personBox(next);
       if (
         insideM60(next.x, next.y) &&
         !wallContact(bounds) &&
         !vehicles.some((v) => overlap(bounds, vehicleBox(v))) &&
-        !world.players.some((p) => p.parkedCar && overlap(bounds, personBox(p)))
+        !onFoot.some((other) => overlap(bounds, personBox(other)))
       ) {
         Object.assign(p, next);
+        walkers.update(p);
         continue;
       }
     }
@@ -631,15 +673,16 @@ export function step(world: World, inputs: ReadonlyMap<string, number>, dt: numb
     const dx = tx - p.x,
       dy = ty - p.y,
       distance = Math.hypot(dx, dy);
-    const move = Math.min(distance, (crosses ? 29 : 11 + p.route) * dt);
+    const move = Math.min(distance, (crosses ? 29 : 11 + (p.route % 6)) * elapsed);
     const next = { x: p.x + (dx * move) / (distance || 1), y: p.y + (dy * move) / (distance || 1) };
     if (
       wallContact(personBox(next)) ||
       vehicles.some((v) => overlap(personBox(next), vehicleBox(v))) ||
-      world.players.some((p) => p.parkedCar && overlap(personBox(next), personBox(p)))
+      onFoot.some((other) => overlap(personBox(next), personBox(other)))
     )
       continue;
     Object.assign(p, next);
+    walkers.update(p);
     p.crossing = crosses;
     if (distance <= move) {
       p.next = (p.next + 1) % route.length;
@@ -647,40 +690,47 @@ export function step(world: World, inputs: ReadonlyMap<string, number>, dt: numb
     }
   }
 
+  const occupied = new Set<number>();
+  for (const p of world.people) {
+    const crossing = crosswalks[p.route];
+    if (crossing && (p.crossing || (!crossing.signal && (p.next === 1 || p.next === 4)))) {
+      occupied.add(p.route);
+    }
+  }
+  const mergeBusy = world.traffic.some(
+    (other) => other.lane === 1 && circuits[1].wrap(faradayMerge[1] - other.d + 16) < 80,
+  );
   for (const car of world.traffic) {
+    const elapsed = npcStep ? npcStep(car) : dt;
+    if (!elapsed) continue;
+    const vehicles = cars.near(car, 110);
+    const people = walkers.near(car, 32);
     const route = circuits[car.lane];
     const following = followTraffic(car, vehicles, 40);
     let free = following.travel;
     for (const stop of stops[car.lane]) {
       const crossing = crosswalks[stop.index];
-      const occupied = world.people.some(
-        (p) =>
-          p.route === stop.index &&
-          (p.crossing || (!crossing.signal && (p.next === 1 || p.next === 4))),
-      );
-      if (occupied || (crossing.signal && lights.vertical !== 'green')) {
+      if (occupied.has(stop.index) || (crossing.signal && lights.vertical !== 'green')) {
         const distance = stop.d - car.d;
         if (distance >= -1e-7) free = Math.min(free, Math.max(0, distance));
       }
     }
     // Give way when turning off Lever to traffic already on Faraday Street.
-    if (
-      car.lane === 0 &&
-      world.traffic.some(
-        (other) => other.lane === 1 && circuits[1].wrap(faradayMerge[1] - other.d + 16) < 80,
-      )
-    ) {
+    if (car.lane === 0 && mergeBusy) {
       const distance = faradayMerge[0] - 26 - car.d;
       if (distance >= 0) free = Math.min(free, distance);
     }
     const target = Math.min(following.limit, Math.sqrt(2 * trafficBraking * free));
-    const speed = Math.max(car.speed - trafficBraking * dt, Math.min(car.speed + 42 * dt, target));
-    const travel = free < 1e-7 ? 0 : Math.min(free, speed * dt);
-    const nextSpeed = travel / dt;
+    const speed = Math.max(
+      car.speed - trafficBraking * elapsed,
+      Math.min(car.speed + 42 * elapsed, target),
+    );
+    const travel = free < 1e-7 ? 0 : Math.min(free, speed * elapsed);
+    const nextSpeed = travel / elapsed;
     car.rearLights = free < 0.001 || nextSpeed < car.speed - 0.001 ? 'brake' : 'tail';
-    dampSlide(car, dt);
-    const slideX = (car.slideX || 0) * dt,
-      slideY = (car.slideY || 0) * dt;
+    dampSlide(car, elapsed);
+    const slideX = (car.slideX || 0) * elapsed,
+      slideY = (car.slideY || 0) * elapsed;
     const ux = Math.cos(car.angle),
       uy = Math.sin(car.angle);
     const along = slideX * ux + slideY * uy;
@@ -689,9 +739,10 @@ export function step(world: World, inputs: ReadonlyMap<string, number>, dt: numb
       next = route.pose(d);
     // Fold longitudinal impact travel into route progress. Steer lateral displacement
     // back onto the lane gradually so a side impact survives the next AI update.
-    const recovery = Math.exp(-1.4 * dt);
+    const recovery = Math.exp(-1.4 * elapsed);
     next.x += (car.x - origin.x) * recovery + slideX - along * ux;
     next.y += (car.y - origin.y) * recovery + slideY - along * uy;
-    moveCar(car, { ...car, ...next, d, speed: nextSpeed }, dt, vehicles, people, true);
+    moveCar(car, { ...car, ...next, d, speed: nextSpeed }, elapsed, vehicles, people, true);
+    cars.update(car);
   }
 }

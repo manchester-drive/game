@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { chatHistoryLimit } from '../src/protocol/chat';
+import { cameraCells } from '../src/protocol/view';
 import { GameRoom } from '../src/server/room';
 
 test('idle controls are released, then the player and their open race leave the room', () => {
@@ -45,4 +46,27 @@ test('recent chat history rolls over in send order and is local to the running r
   );
   expect(room.chatHistory).toEqual(messages.slice(2));
   expect(new GameRoom().chatHistory).toEqual([]);
+});
+
+test('unobserved traffic keeps travelling and returns to full detail as a camera approaches', () => {
+  const room = new GameRoom();
+  const car = room.world.traffic.find((v) => v.lane === 2)!;
+  const tick = (observed: boolean) =>
+    room.advance(1 / 60, () => {}, observed ? [cameraCells(car, 600, 400)] : []);
+  const start = car.d;
+  for (let i = 0; i < 120; i++) tick(false);
+  expect(car.d).toBeGreaterThan(start + 20);
+  let held = 0;
+  for (let i = 0; i < 12; i++) {
+    const d = car.d;
+    tick(false);
+    if (d === car.d) held++;
+  }
+  expect(held).toBeGreaterThan(0);
+  for (let i = 0; i < 12; i++) {
+    const d = car.d;
+    tick(true);
+    expect(car.d).toBeGreaterThan(d);
+    expect(car.d - d).toBeLessThan(5);
+  }
 });

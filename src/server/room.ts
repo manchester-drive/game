@@ -1,5 +1,8 @@
 import { chatHistoryLimit, type ChatMessage } from '../protocol/chat';
-import type { Player, World } from '../game/game-types';
+import { cellKey, type CellBounds } from '../game/spatial';
+import { viewCellSize } from '../protocol/view';
+import { activeCells } from './neighbourhoods';
+import type { Player, Position, World } from '../game/game-types';
 import type { GarageOptions } from '../game/garage';
 import { raceCommand, withdraw } from '../game/race';
 import { COLORS, createWorld, findRaceGrid, placePlayer, step, useCar } from '../game/world';
@@ -19,6 +22,8 @@ export class GameRoom {
   readonly chatHistory: ChatMessage[] = [];
   private readonly sessions = new Map<string, RoomSession>();
   private readonly inputs = new Map<string, number>();
+  private readonly npcSchedule = new WeakMap<Position, { lastTick: number; phase: number }>();
+  private nextPhase = 0;
   private accumulator = 0;
   private tick = 0;
 
@@ -89,7 +94,11 @@ export class GameRoom {
     return raceCommand(this.world, session.player, command.action, command.raceId, findRaceGrid);
   }
 
-  advance(elapsedSeconds: number, publish: (world: World) => void) {
+  advance(
+    elapsedSeconds: number,
+    publish: (world: World) => void,
+    views: Iterable<CellBounds> = [],
+  ) {
     const now = this.now();
     for (const session of this.sessions.values()) {
       const idle = now - session.lastInputAt;
@@ -97,9 +106,25 @@ export class GameRoom {
       else if (idle > 2_500) this.inputs.set(session.player.id, 0);
     }
 
+    const active = activeCells(views, this.world.players);
+    const npcStep = (actor: Position) => {
+      const tick = this.tick + 1;
+      let schedule = this.npcSchedule.get(actor);
+      if (!schedule) {
+        schedule = { lastTick: this.tick, phase: this.nextPhase++ % 6 };
+        this.npcSchedule.set(actor, schedule);
+      }
+      // Spread quiet streets across six ticks. Waking consumes exactly the time since the last move.
+      const cell = cellKey(Math.floor(actor.x / viewCellSize), Math.floor(actor.y / viewCellSize));
+      if (tick % 6 !== schedule.phase && !active.has(cell)) return 0;
+      const elapsed = (tick - schedule.lastTick) * stepSeconds;
+      schedule.lastTick = tick;
+      return elapsed;
+    };
+
     this.accumulator += Math.min(elapsedSeconds, 0.2);
     while (this.accumulator >= stepSeconds) {
-      step(this.world, this.inputs, stepSeconds);
+      step(this.world, this.inputs, stepSeconds, npcStep);
       this.accumulator -= stepSeconds;
       if (++this.tick % 4 === 0) publish(this.world);
     }

@@ -2,13 +2,23 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
 import type { ChatMessage } from '../protocol/chat';
-import { chatCommand, inputCommand, doorCommand, raceCommandBody } from '../protocol/commands';
+import {
+  chatCommand,
+  inputCommand,
+  doorCommand,
+  raceCommandBody,
+  viewCommand,
+} from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
 
 type Variables = { body: Record<string, unknown>; session: RoomSession };
 const commandBody = z.record(z.string(), z.unknown());
 
-export function createRoutes(room: GameRoom, publishChat: (message: ChatMessage) => void) {
+export function createRoutes(
+  room: GameRoom,
+  publishChat: (message: ChatMessage) => void,
+  updateView: (view: z.output<typeof viewCommand>) => boolean,
+) {
   const api = new Hono<{ Variables: Variables }>();
   api.use(async (c, next) => {
     c.header('Cache-Control', 'no-store');
@@ -17,7 +27,7 @@ export function createRoutes(room: GameRoom, publishChat: (message: ChatMessage)
   const authenticatedCommands = ['/input', '/leave', '/race', '/vehicle', '/chat'];
   api.on(
     'POST',
-    ['/join', ...authenticatedCommands],
+    ['/join', '/view', ...authenticatedCommands],
     bodyLimit({ maxSize: 2048, onError: (c) => c.json({ error: 'Request too large.' }, 413) }),
     async (c, next) => {
       const origin = c.req.header('Origin');
@@ -31,6 +41,11 @@ export function createRoutes(room: GameRoom, publishChat: (message: ChatMessage)
     },
   );
 
+  api.post('/view', (c) => {
+    const view = viewCommand.safeParse(c.var.body);
+    if (!view.success) return c.json({ error: 'Invalid camera area.' }, 400);
+    return updateView(view.data) ? c.json({}) : c.json({ error: 'View disconnected.' }, 404);
+  });
   api.post('/join', (c) => {
     const body = c.var.body;
     const result = room.join(typeof body.name === 'string' ? body.name : '', body);

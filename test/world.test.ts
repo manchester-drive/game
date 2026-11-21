@@ -224,13 +224,15 @@ test('traffic yields at the unmarked Faraday Street crossing and resumes', () =>
   expect(v.d > cross.stop + 15 && v.rearLights === 'tail').toBeTruthy();
 });
 
-test('all traffic completes repeated laps through turns, signals and the Faraday merge', () => {
+test('cars and pedestrians complete repeated circuits in Piccadilly and the Northern Quarter', () => {
   const w = createWorld(),
     inputs = new Map(),
     laps = w.traffic.map(() => 0),
+    walks = w.people.map(() => 0),
     indicated = new Set();
   for (let i = 0; i < 60 * 360; i++) {
     const previous = w.traffic.map((v) => ({ ...v }));
+    const waypoints = w.people.map((p) => p.next);
     step(w, inputs, dt);
     for (const [j, v] of w.traffic.entries()) {
       const p = previous[j];
@@ -238,9 +240,13 @@ test('all traffic completes repeated laps through turns, signals and the Faraday
       if (v.d < p.d - 100) laps[j]++;
       if (v.indicating) indicated.add(j);
     }
+    for (const [j, p] of w.people.entries()) {
+      if (waypoints[j] !== 0 && p.next === 0) walks[j]++;
+    }
   }
   expect(laps.every((n) => n >= 2)).toBeTruthy();
   expect(indicated.size).toBe(w.traffic.length);
+  expect(walks.every((n) => n >= 2)).toBe(true);
 });
 
 test('two drivers can steer a full lap from the grid through the mapped gates', () => {

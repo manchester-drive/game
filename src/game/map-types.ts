@@ -31,5 +31,5 @@ export interface MapData {
   trees: Point[];
   routes: RouteLeg[][];
   crossings: { centre: Point; signal: boolean; walk: Point[] }[];
-  garden_walks: Point[][];
+  walking_paths: Point[][];
 }

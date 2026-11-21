@@ -2,6 +2,7 @@ import type { Player, Position, World } from '../game/game-types';
 import { heldOnGrid } from '../game/race';
 import { clampToM60, mapChunk } from '../game/region';
 import { useBrowserMap } from './map';
+import { cameraCells } from '../protocol/view';
 import { streetAt } from '../game/streets';
 import { createWorld, drive, walk, roadUsers, JUNCTION } from '../game/world';
 import type { Credentials } from '../protocol/commands';
@@ -284,6 +285,10 @@ subscribeToRoom(
     frames = [];
     release();
     updateUI();
+  },
+  () => {
+    const { width, height } = viewport(map);
+    return { area: cameraCells(focus, width, height), token: session?.token };
   },
 );
 

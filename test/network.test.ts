@@ -3,9 +3,16 @@ import type { ChatEvent } from '../src/protocol/chat';
 import type { Credentials } from '../src/protocol/commands';
 import type { World } from '../src/game/game-types';
 import { models } from '../src/game/garage';
+import { cameraCells } from '../src/protocol/view';
+import { JUNCTION } from '../src/game/streets';
 import { createGameServer } from '../src/server';
 
-async function readEvents<K extends 'message' | 'chat'>(url: URL, signal: AbortSignal, event: K) {
+async function readEvents<K extends 'message' | 'chat'>(
+  url: URL,
+  signal: AbortSignal,
+  event: K,
+  onViewer?: (id: string) => void,
+) {
   const res = await fetch(new URL('/events', url), { signal });
   const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
@@ -20,8 +27,9 @@ async function readEvents<K extends 'message' | 'chat'>(url: URL, signal: AbortS
       const fields = buffer.slice(0, end).split('\n');
       buffer = buffer.slice(end + 2);
       const type = fields.find((line) => line.startsWith('event: '))?.slice(7) ?? 'message';
-      if (type === event)
-        return JSON.parse(fields.find((line) => line.startsWith('data: '))!.slice(6));
+      const data = fields.find((line) => line.startsWith('data: '))!.slice(6);
+      if (type === 'viewer') onViewer?.(data);
+      if (type === event) return JSON.parse(data);
     }
   };
 }
@@ -117,6 +125,71 @@ test('drivers can join together after the Piccadilly bays fill up', async () => 
       expect(Math.hypot(other.x - player.x, other.y - player.y)).toBeGreaterThan(2 * models.van.width);
     }
   }
+});
+
+test('separate neighbourhood views converge on the same NPCs and free cam keeps local collisions', async () => {
+  const server = createGameServer({ hostname: '127.0.0.1', port: 0 });
+  const abort = new AbortController();
+  onTestFinished(async () => {
+    abort.abort();
+    await server.stop();
+  });
+  const post = (path: string, body: object) =>
+    fetch(new URL(path, server.url), { method: 'POST', body: JSON.stringify(body) });
+  const { token } = (await (await post('/join', { name: 'Ada' })).json()) as Credentials;
+  const viewers: string[] = [];
+  const [ada, spectator] = await Promise.all(
+    [0, 1].map((i) =>
+      readEvents(server.url, abort.signal, 'message', (id) => {
+        viewers[i] = id;
+      }),
+    ),
+  );
+  await Promise.all([ada(), spectator()]);
+  const north = cameraCells({ x: 2360, y: 510 }, 800, 500);
+  const south = cameraCells(JUNCTION, 800, 500);
+  const setView = async (i: number, area: typeof north, driver?: string) => {
+    expect((await post('/view', { viewer: viewers[i], area, token: driver })).status).toBe(200);
+  };
+  async function until(read: () => Promise<World>, match: (w: World) => boolean) {
+    for (let i = 0; i < 20; i++) {
+      const w = await read();
+      if (match(w)) return w;
+    }
+    throw new Error('Camera subscription did not follow its viewer');
+  }
+  const inNorth = (w: World) => w.traffic.some((car) => car.lane === 2);
+  const inSouth = (w: World) => w.traffic.some((car) => car.lane === 0);
+  await Promise.all([setView(0, south, token), setView(1, north)]);
+  const southFrame = await ada(),
+    northFrame = await until(spectator, inNorth);
+  expect(inSouth(southFrame)).toBe(true);
+  const southIds = new Set([...southFrame.people, ...southFrame.traffic].map((v) => v.id));
+  expect(northFrame.people.length).toBeGreaterThan(0);
+  expect([...northFrame.people, ...northFrame.traffic].every((v) => !southIds.has(v.id))).toBe(
+    true,
+  );
+
+  // Ada keeps her car on Piccadilly and pans the camera to the spectator.
+  await setView(0, north, token);
+  let combined = await until(ada, inNorth),
+    shared = await spectator();
+  while (shared.time < combined.time) shared = await spectator();
+  while (combined.time < shared.time) combined = await ada();
+  expect(combined.time).toBe(shared.time);
+  expect(inSouth(combined)).toBe(true);
+  for (const kind of ['traffic', 'people'] as const) {
+    expect(
+      combined[kind].filter((npc) => shared[kind].some((other) => other.id === npc.id)),
+    ).toEqual(shared[kind]);
+    expect(new Set(combined[kind].map((npc) => npc.id)).size).toBe(combined[kind].length);
+  }
+  // Both views now meet back on Piccadilly with no Northern Quarter NPCs in either feed.
+  await Promise.all([setView(0, south, token), setView(1, south)]);
+  const local = await until(ada, (w) => !inNorth(w)),
+    returned = await until(spectator, inSouth);
+  expect(inSouth(local)).toBe(true);
+  expect(inNorth(returned)).toBe(false);
 });
 
 test('the Bun server serves the browser bundle and validates game commands', async () => {

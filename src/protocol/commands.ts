@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { maxViewSpan } from './view';
 import { chatTextLimit } from './chat';
 import type { Appearance } from '../game/garage';
 
@@ -6,6 +7,18 @@ export interface Credentials {
   id: string;
   token: string;
 }
+
+const coordinate = z.int().min(-2048).max(2048);
+export const viewCommand = z.object({
+  viewer: z.uuid(),
+  token: z.string().optional(),
+  area: z
+    .object({ left: coordinate, right: coordinate, top: coordinate, bottom: coordinate })
+    .refine(
+      ({ left, right, top, bottom }) =>
+        right >= left && right - left < maxViewSpan && bottom >= top && bottom - top < maxViewSpan,
+    ),
+});
 
 export const inputCommand = z.object({
   seq: z.int(),
@@ -25,6 +38,7 @@ export type RaceCommand = z.output<typeof raceCommandBody>;
 
 type Token = Pick<Credentials, 'token'>;
 export interface Commands {
+  '/view': z.input<typeof viewCommand>;
   '/join': Appearance & { name: string };
   '/leave': Token;
   '/chat': Token & z.input<typeof chatCommand>;

@@ -48,7 +48,7 @@ bun test
 
 The tests cover driving and reversing, collisions and recovery, clear spawns, traffic signals, pedestrian crossings, full driving laps, turning traffic, race staging, directional checkpoints, finish order and two clients observing the same server state.
 
-For a playtest, start together on Piccadilly, split up at Lever Street and meet at its crossing near Dale Street. Check that both drivers see the same pedestrian and waiting traffic. Watch the gap between queued cars at a red light. Tap a parked car, then try a faster bump and a glancing hit against a building. Check both views as one driver leaves and rejoins.
+For a playtest, leave one browser on Piccadilly and pan north in the other to watch traffic on Shudehill. Bring the cameras back together at the Lever Street crossing near Dale Street. Check that both drivers see the same pedestrian and waiting traffic. Watch the gap between queued cars at a red light. Tap a parked car, then try a faster bump and a glancing hit against a building. Check both views as one driver leaves and rejoins.
 
 ## Implementation
 
@@ -63,9 +63,9 @@ The game runs as one Bun application. Its source is organised by responsibility.
 
 The HTTP routes validate incoming commands and pass them to the room. The room owns player sessions, input ordering and simulation time. It can run directly in a test with a controlled clock.
 
-The server advances the world at 60 simulation steps per second and broadcasts snapshots over Server-Sent Events at 15 Hz. Each browser sends sequenced control changes over HTTP, predicts its own car between snapshots and interpolates other road users. A lost heartbeat releases the controls and eventually removes the car. The shared room lasts for the lifetime of the server.
+Players and nearby NPCs update at 60 Hz. Unobserved NPCs continue their routes at 10 Hz, with collision and crossing checks. Every browser receives 15 snapshots per second over Server-Sent Events. NPC snapshots cover the camera plus a margin and the area around the driver when free cam is detached. Player presence, races and chat are shared across the room. Each browser sends sequenced control changes over HTTP, predicts its own car between snapshots and interpolates other road users. A lost heartbeat releases the controls and eventually removes the car. The shared room lasts for the lifetime of the server.
 
-Cars and walkers collide with buildings, vehicles, other players and the edge of the playable area. Cars also stop at the banks of mapped water and can cross it on road bridges. Tree trunks, bus stop poles, fingerposts, traffic lights, benches, fixed bollards, litter bins, pillar boxes and planters also have solid bases. You can pass under branches and behind signs. Traffic follows two connected circuits, brakes for queues and crossings, and indicates before turning. Signal timings and lane positions are game approximations. Free driving allows either direction. The race and both traffic routes follow mapped motorcar access and one-way directions.
+Cars and walkers collide with buildings, vehicles, other players and the edge of the playable area. Cars also stop at the banks of mapped water and can cross it on road bridges. Tree trunks, bus stop poles, fingerposts, traffic lights, benches, fixed bollards, litter bins, pillar boxes and planters also have solid bases. You can pass under branches and behind signs. Traffic follows four mapped circuits across Piccadilly, Shudehill and the Northern Quarter, brakes for queues and crossings, and indicates before turning. Signal timings and lane positions are game approximations. Free driving allows either direction. The race and all traffic routes follow mapped motorcar access and one-way directions.
 
 ## Map data
 

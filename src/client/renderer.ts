@@ -648,10 +648,9 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
     }
     // Draw by ground position so people and cars can pass behind tree crowns and signs.
     const margin = 32; // Includes the tallest tree crown outside the viewport.
-    const scene: (StreetObject | Vehicle | Pedestrian | Player)[] = streetObjects.filter(
-      (o) =>
-        o.x >= x - margin && o.x <= x + vw + margin && o.y >= y - margin && o.y <= y + vh + margin,
-    );
+    const visible = (o: Position) =>
+      o.x >= x - margin && o.x <= x + vw + margin && o.y >= y - margin && o.y <= y + vh + margin;
+    const scene: (StreetObject | Vehicle | Pedestrian | Player)[] = streetObjects.filter(visible);
     // Chunks include a margin. Draw each regional trunk from its owning chunk once.
     for (let i = Math.floor((x - margin) / chunkSize); i <= (x + vw + margin) / chunkSize; i++) {
       for (let j = Math.floor((y - margin) / chunkSize); j <= (y + vh + margin) / chunkSize; j++) {
@@ -670,9 +669,11 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
       }
     }
     for (const p of world.players) {
-      if (p.parkedCar) scene.push(p.parkedCar);
+      if (p.parkedCar && visible(p.parkedCar)) scene.push(p.parkedCar);
     }
-    scene.push(...world.traffic, ...world.people, ...world.players);
+    for (const actors of [world.traffic, world.people, world.players]) {
+      for (const actor of actors) if (visible(actor)) scene.push(actor);
+    }
     scene.sort((a, b) => a.y - b.y);
     const signal = signals(world.time).vertical;
     for (const item of scene) {
@@ -682,6 +683,7 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
       else car(b, item, item.id === me, world.time);
     }
     for (const v of world.players) {
+      if (!visible(v)) continue;
       const str = v.id === me ? 'YOU' : v.name;
       b.font = 'bold 7px monospace';
       const lw = Math.ceil(b.measureText(str).width) + 6;

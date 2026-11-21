@@ -25,6 +25,25 @@ DALE = [
     (1228406597, 11391689251), (1019236053, 1827300885),
     (353289877, 3590723624), (171879650, 4843442), *GARDENS[8:],
 ]
+# Northern Quarter circuits around Shudehill/High Street and Warwick/Spear Street.
+SHUDEHILL_START = 4833073
+SHUDEHILL = [
+    (124570188, 4843766), (354343316, 1386463380), (828870830, 1687154509),
+    (246124647, 11207220013), (1209683485, 889327027), (169009045, 889324644),
+    (1050307078, 1386463384), (156341511, 1502908249), (1349833971, 4843764),
+    (81019563, SHUDEHILL_START),
+]
+WARWICK_START = 2087120712
+WARWICK = [
+    (81021985, 3590723616), (1079067691, 3590723643), (1079067692, 4830778),
+    (185707159, 1671918186), (1434717685, 11833676109), (3650081, WARWICK_START),
+]
+# Out-and-back walks on mapped footways and pedestrian streets in the two districts.
+WALKING_WAYS = (
+    75313268, 615021014, 1582334428, 353913678, 249112972, 1218089233,
+    171750815, 1218065189, 1218065202, 1217899414,
+    196376301, 1217872235, 1218079819,
+)
 
 
 def tags(element):
@@ -177,10 +196,10 @@ def convert(source):
                               walk=[a, b, nodes[pavement_b], b, a, nodes[pavement_a]]))
     return dict(width=WIDTH, height=HEIGHT, roads=roads, paths=paths, areas=exposed_water(areas, roads),
                 buildings=buildings, trees=trees, furniture=furniture,
-                routes=[route(GARDENS_START, GARDENS), route(DALE_START, DALE)],
+                routes=[route(GARDENS_START, GARDENS), route(DALE_START, DALE),
+                        route(SHUDEHILL_START, SHUDEHILL), route(WARWICK_START, WARWICK)],
                 crossings=crossings,
-                garden_walks=[[nodes[n] for n in ways[wid][0]]
-                              for wid in (75313268, 615021014, 1582334428)])
+                walking_paths=[[nodes[n] for n in ways[wid][0]] for wid in WALKING_WAYS])
 
 
 if __name__ == "__main__":
