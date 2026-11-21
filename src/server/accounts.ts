@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
+import { character, type Character } from '../game/garage';
 
 export const sessionDays = 30;
 const sessionMs = sessionDays * 24 * 60 * 60 * 1000;
@@ -83,6 +84,27 @@ export class Accounts {
     return this.db
       .query('SELECT id, username, start_area, active_vehicle_id FROM users WHERE id = ?')
       .get(id) as User | null;
+  }
+
+  character(userId: string): Character | null {
+    const row = this.db
+      .query(
+        'SELECT figure, skin, hair_style AS hairStyle, hair, jacket, trousers FROM characters WHERE user_id = ?',
+      )
+      .get(userId) as Record<string, string> | null;
+    return row && character(row);
+  }
+
+  saveCharacter(userId: string, look: Character) {
+    this.db
+      .query(
+        `INSERT INTO characters (user_id, figure, skin, hair_style, hair, jacket, trousers, updated_at)
+         VALUES ($user, $figure, $skin, $hairStyle, $hair, $jacket, $trousers, $now)
+         ON CONFLICT (user_id) DO UPDATE SET figure = $figure, skin = $skin,
+           hair_style = $hairStyle, hair = $hair, jacket = $jacket, trousers = $trousers,
+           updated_at = $now`,
+      )
+      .run({ user: userId, now: this.now(), ...look });
   }
 
   private createSession(userId: string) {

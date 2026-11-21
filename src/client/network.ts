@@ -10,7 +10,7 @@ type Reply<T> =
   | { ok: false; status: number; error: string };
 type Responses<P> = P extends '/join'
   ? Credentials
-  : P extends '/account/signup' | '/account/login'
+  : P extends '/account/signup' | '/account/login' | '/account/character'
     ? AccountProfile
     : object;
 export async function post<P extends keyof Commands>(

@@ -68,8 +68,7 @@
         </div>
         <div class="garage">
           <label>Vehicle<select id="model"></select></label>
-          <label>Jacket<select id="jacket"></select></label>
-          <label>Skin tone<select id="skin"></select></label>
+          <button type="button" id="creator-open" class="secondary" aria-haspopup="dialog">Edit character</button>
         </div>
         <div class="account-bar">
           <span id="account-status">Playing as a guest</span>
@@ -96,6 +95,32 @@
           <div class="fields">
             <button value="login">Log in</button><button value="signup">Sign up</button
             ><button type="button" id="account-cancel" class="secondary">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="creator" aria-labelledby="creator-title">
+        <form id="creator-form" method="dialog">
+          <h2 id="creator-title">Your character</h2>
+          <div class="creator-layout">
+            <canvas id="creator-preview" width="120" height="120" aria-hidden="true"></canvas>
+            <div>
+              <fieldset class="figure-tiles">
+                <legend>Figure</legend>
+                <div id="figure-tiles"></div>
+              </fieldset>
+              <div class="creator-fields">
+                <label>Hair style<select id="hairStyle"></select></label>
+                <label>Hair<select id="hair"></select></label>
+                <label>Skin tone<select id="skin"></select></label>
+                <label>Jacket<select id="jacket"></select></label>
+                <label>Lower<select id="trousers"></select></label>
+              </div>
+            </div>
+          </div>
+          <p id="creator-error" role="alert" hidden></p>
+          <div class="fields">
+            <button value="save" id="creator-save">Save character</button
+            ><button type="button" id="creator-cancel" class="secondary">Cancel</button>
           </div>
         </form>
       </dialog>

@@ -4,6 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import type { LiveChatEvent } from '../protocol/chat';
+import type { AccountProfile } from '../protocol/commands';
 import type { Player } from '../game/game-types';
 import {
   chatCommand,
@@ -13,6 +14,7 @@ import {
   viewCommand,
 } from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
+import { character } from '../game/garage';
 import {
   credentialsBody,
   LoginLimiter,
@@ -38,9 +40,6 @@ function secureRequest(c: Context<Env>) {
   return proto === 'https' || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
 }
 
-function publicUser(user: User) {
-  return { username: user.username };
-}
 
 export function createRoutes(
   room: GameRoom,
@@ -57,7 +56,15 @@ export function createRoutes(
   const authenticatedCommands = ['/input', '/leave', '/race', '/vehicle', '/chat'];
   api.on(
     'POST',
-    ['/join', '/view', '/account/signup', '/account/login', '/account/logout', ...authenticatedCommands],
+    [
+      '/join',
+      '/view',
+      '/account/signup',
+      '/account/login',
+      '/account/logout',
+      '/account/character',
+      ...authenticatedCommands,
+    ],
     bodyLimit({ maxSize: 2048, onError: (c) => c.json({ error: 'Request too large.' }, 413) }),
     async (c, next) => {
       const origin = c.req.header('Origin');
@@ -76,6 +83,9 @@ export function createRoutes(
     if (!view.success) return c.json({ error: 'Invalid camera area.' }, 400);
     return updateView(view.data) ? c.json({}) : c.json({ error: 'View disconnected.' }, 404);
   });
+  function publicUser(user: User): AccountProfile {
+    return { username: user.username, character: accounts.character(user.id) };
+  }
   function signedIn(c: Context<Env>) {
     return accounts.userForToken(getCookie(c, accountCookie));
   }
@@ -120,11 +130,19 @@ export function createRoutes(
     const user = signedIn(c);
     return user ? c.json(publicUser(user)) : c.json({ error: 'Not signed in.' }, 401);
   });
+  api.post('/account/character', (c) => {
+    const user = signedIn(c);
+    if (!user) return c.json({ error: 'Log in to save a character.' }, 401);
+    accounts.saveCharacter(user.id, character(c.var.body));
+    return c.json(publicUser(user));
+  });
   api.post('/join', (c) => {
     const body = c.var.body;
     const user = signedIn(c);
     if (user) {
-      const result = room.join(user.username, body, undefined, user.id);
+      // The stored character wins over anything the request sends.
+      const look = { model: body.model, ...character(accounts.character(user.id) ?? {}) };
+      const result = room.join(user.username, look, undefined, user.id);
       return 'error' in result ? c.json(result, 409) : c.json(result, 201);
     }
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 16) : '';

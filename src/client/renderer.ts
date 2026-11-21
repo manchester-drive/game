@@ -14,7 +14,7 @@ import {
   overlapsTile,
   type MapChunk,
 } from '../game/region';
-import { jackets, models, skinTones } from '../game/garage';
+import { hairColours, jackets, models, skinTones, trousers, type Character } from '../game/garage';
 import { signals } from '../game/world';
 
 type Context = CanvasRenderingContext2D;
@@ -24,7 +24,7 @@ type Tile = Pick<MapData, 'roads' | 'paths' | 'areas' | 'buildings'> & {
   labels: Label[];
 };
 type CarSprite = Omit<Vehicle, 'id' | 'speed'>;
-type CharacterSprite = Pick<VisiblePlayer, 'x' | 'y' | 'angle' | 'speed' | 'jacket' | 'skin'>;
+type CharacterSprite = Pick<VisiblePlayer, 'x' | 'y' | 'angle' | 'speed'> & Character;
 
 function rect(g: Context, x: number, y: number, w: number, h: number, color: string) {
   g.fillStyle = color;
@@ -526,18 +526,46 @@ function car(g: Context, v: CarSprite, local: boolean, time: number) {
   }
   g.restore();
 }
+// Drawn facing +x: x runs back to front and y runs across the shoulders.
 function character(g: Context, player: CharacterSprite, time: number) {
   g.save();
   g.translate(Math.round(player.x), Math.round(player.y));
   g.rotate(player.angle);
-  const stride = player.speed > 1 ? Math.sin(time * 13) * 2 : 0;
-  rect(g, -3 + stride, -2, 3, 2, '#29363a');
-  rect(g, -3 - stride, 1, 3, 2, '#29363a');
-  rect(g, -2, -3, 4, 6, jackets[player.jacket]);
-  rect(g, -1 - stride, -4, 3, 2, jackets[player.jacket]);
-  rect(g, -1 + stride, 2, 3, 2, jackets[player.jacket]);
-  rect(g, 1, -2, 3, 4, skinTones[player.skin]);
-  rect(g, -1, -2, 3, 4, '#453b35');
+  const feminine = player.figure === 'feminine';
+  // The feminine figure has narrower shoulders and a slightly shorter stride.
+  const reach = feminine ? 1.5 : 2;
+  const stride = player.speed > 1 ? Math.sin(time * 13) * reach : 0;
+  const legs = trousers[player.trousers] ?? trousers.charcoal;
+  const jacket = jackets[player.jacket] ?? jackets.teal;
+  const hair = hairColours[player.hair] ?? hairColours.brown;
+  const skirt = legs.cut === 'skirt';
+  const legInk = skirt ? '#29363a' : legs.colour;
+  rect(g, -3 + stride, -2, 3, 2, legInk);
+  rect(g, -3 - stride, feminine ? 0 : 1, 3, 2, legInk);
+  // A skirt is 1px wider than the legs on each side.
+  if (skirt) rect(g, -3, -3, 2, 6, legs.colour);
+  if (feminine) {
+    // Tapered towards the waist at the back.
+    rect(g, -1, -2, 3, 4, jacket);
+    rect(g, -2, -1, 1, 2, jacket);
+  } else rect(g, -2, -3, 4, 6, jacket);
+  rect(g, -1 - stride, feminine ? -3 : -4, 3, 2, jacket);
+  rect(g, -1 + stride, feminine ? 1 : 2, 3, 2, jacket);
+  rect(g, 1, -2, 3, 4, skinTones[player.skin] ?? skinTones.tan);
+  rect(g, -1, -2, 3, 4, hair);
+  switch (player.hairStyle) {
+    case 'long':
+      rect(g, -3, -2, 2, 4, hair);
+      break;
+    case 'ponytail':
+      // The tail swings across the back with the stride.
+      rect(g, -3, -1 + Math.round(stride / 2), 2, 2, hair);
+      break;
+    case 'bun':
+      rect(g, -2, -1, 1, 2, hair);
+      rect(g, -3, -1, 1, 2, hair);
+      break;
+  }
   g.restore();
 }
 function pedestrian(g: Context, p: Pedestrian) {
@@ -556,6 +584,24 @@ export function drawGarage(canvas: HTMLCanvasElement, style: Appearance) {
   g.scale(3, 3);
   car(g, { ...style, x: 15, y: 8, angle: 0, color: '#51ccc2' }, false, 0);
   character(g, { ...style, x: 35, y: 8, angle: 0, speed: 0 }, 0);
+  g.restore();
+}
+
+// A scaled-up character facing the top of the canvas, as on the map when walking north.
+export function drawCharacter(
+  canvas: HTMLCanvasElement,
+  look: Character,
+  time: number,
+  walking = false,
+) {
+  const g = canvas.getContext('2d')!;
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.save();
+  const scale = Math.floor(Math.min(canvas.width, canvas.height) / 12);
+  g.scale(scale, scale);
+  const x = canvas.width / scale / 2,
+    y = canvas.height / scale / 2;
+  character(g, { ...look, x, y, angle: -Math.PI / 2, speed: walking ? 2 : 0 }, time);
   g.restore();
 }
 

@@ -522,7 +522,8 @@ kbd {
 
 .garage {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr;
+  grid-template-columns: 1.3fr 1fr;
+  align-items: end;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -899,4 +900,105 @@ button.secondary {
   color: var(--muted);
   font-size: 0.68rem;
   text-transform: uppercase;
+}
+#creator-open {
+  height: 31px;
+  font-size: 0.84rem;
+}
+#creator {
+  width: min(460px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 18px 20px;
+  border: 0;
+  border-top: 3px solid var(--yellow);
+  background: var(--ink);
+  color: var(--paper);
+}
+#creator::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+#creator h2 {
+  margin: 0 0 12px;
+}
+.creator-layout {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+#creator-preview,
+#figure-tiles canvas {
+  image-rendering: pixelated;
+  background: #3a4640;
+  border: 1px solid var(--rule);
+}
+#creator-preview {
+  width: 120px;
+  height: 120px;
+}
+.figure-tiles {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+}
+.figure-tiles legend {
+  font:
+    600 0.8rem ui-monospace,
+    monospace;
+  color: #c5cbbd;
+  margin-bottom: 4px;
+}
+#figure-tiles {
+  display: flex;
+  gap: 8px;
+}
+#figure-tiles label {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+#figure-tiles label:has(:checked) {
+  border-color: var(--yellow);
+  color: var(--paper);
+}
+#figure-tiles label:has(:focus-visible) {
+  outline: 3px solid #e9e9c4;
+}
+#figure-tiles input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+#figure-tiles canvas {
+  width: 48px;
+  height: 48px;
+}
+.creator-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+.creator-fields select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 5px 2px;
+  font: inherit;
+  color: var(--paper);
+  background: #303b36;
+  border: 1px solid #69746b;
+}
+#creator-error {
+  color: #f0a08f;
+  font-size: 0.84rem;
+}
+@media (max-width: 420px) {
+  .creator-layout {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
 }

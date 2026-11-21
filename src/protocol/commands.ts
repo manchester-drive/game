@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { maxViewSpan } from './view';
 import { chatTextLimit } from './chat';
-import type { Appearance } from '../game/garage';
+import type { Appearance, Character } from '../game/garage';
 
 export interface Credentials {
   id: string;
@@ -46,11 +46,13 @@ export interface AccountCredentials {
 }
 export interface AccountProfile {
   username: string;
+  character: Character | null;
 }
 export interface Commands {
   '/account/signup': AccountCredentials;
   '/account/login': AccountCredentials;
   '/account/logout': Record<string, never>;
+  '/account/character': Character;
   '/view': z.input<typeof viewCommand>;
   '/join': Appearance & { name: string };
   '/leave': Token;

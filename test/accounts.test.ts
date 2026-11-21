@@ -95,3 +95,25 @@ test('an account joins under its username and guests cannot borrow it', async ()
   expect(session.player.guest).toBe(true);
   expect(room.chat(session, 'hello').guest).toBe(true);
 });
+
+test('a saved character is used on join and appearance in the request is ignored', async () => {
+  const { room, post } = setup();
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  const saved = await post('/account/character', {
+    figure: 'feminine',
+    hairStyle: 'ponytail',
+    hair: 'auburn',
+    skin: 'deep',
+    jacket: 'plum',
+    trousers: 'redSkirt',
+  });
+  expect(saved.body.character).toMatchObject({ figure: 'feminine', hairStyle: 'ponytail' });
+  const joined = await post('/join', { figure: 'masculine', jacket: 'teal', hair: 'grey' });
+  expect(room.sessionFor(joined.body.token)!.player).toMatchObject({
+    figure: 'feminine',
+    hairStyle: 'ponytail',
+    hair: 'auburn',
+    jacket: 'plum',
+    trousers: 'redSkirt',
+  });
+});

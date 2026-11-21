@@ -3,14 +3,16 @@ import { el } from './hud';
 import { post } from './network';
 
 // Shows who is signed in and runs the sign-up and log-in dialog.
-export function setupAccount(onChange: (account: AccountProfile | null) => void) {
+export function setupAccount(
+  onChange: (account: AccountProfile | null, signedUp: boolean) => void,
+) {
   const dialog = el('account-dialog'),
     form = el('account-form'),
     error = el('account-error');
   let account: AccountProfile | null = null,
     busy = false;
 
-  function show(next: AccountProfile | null) {
+  function show(next: AccountProfile | null, signedUp = false) {
     account = next;
     const status = el('account-status');
     status.replaceChildren();
@@ -22,7 +24,7 @@ export function setupAccount(onChange: (account: AccountProfile | null) => void)
     el('account-open').hidden = !!account;
     el('account-logout').hidden = !account;
     el('name').hidden = el('name-label').hidden = !!account;
-    onChange(account);
+    onChange(account, signedUp);
   }
 
   function fail(message: string) {
@@ -49,7 +51,7 @@ export function setupAccount(onChange: (account: AccountProfile | null) => void)
       if (!result.ok) return fail(result.error);
       el('account-password').value = '';
       dialog.close();
-      show(result.data);
+      show(result.data, mode === 'signup');
     } catch {
       fail('Could not reach the server. Try again.');
     } finally {

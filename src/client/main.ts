@@ -9,7 +9,8 @@ import { createWorld, drive, walk, JUNCTION } from '../game/world';
 import type { Commands, Credentials } from '../protocol/commands';
 import { setupAccount } from './account';
 import { setupChat } from './chat';
-import { el, notice, outfit, setupGarage, updateHud } from './hud';
+import { setupCreator } from './creator';
+import { el, notice, setupGarage, updateHud } from './hud';
 import { leaveOnPageHide, post, subscribeToRoom } from './network';
 import { makeRenderer, viewport } from './renderer';
 import { setupWorldMap } from './world-map';
@@ -45,8 +46,22 @@ let focus = { ...JUNCTION },
 let doorBusy = false,
   raceBusy = false,
   dismissedRace: string | undefined;
-setupGarage();
-setupAccount(() => updateUI());
+const creator = setupCreator(async (look) => {
+  if (!account.current()) return null;
+  const result = await post('/account/character', look).catch(() => null);
+  return result?.ok ? null : (result?.error ?? 'Could not save your character. Try again.');
+});
+const { outfit, refreshPreview } = setupGarage(creator.current);
+creator.onChange(refreshPreview);
+const account = setupAccount((profile, signedUp) => {
+  if (profile?.character) creator.set(profile.character);
+  else if (signedUp) {
+    // A new account keeps the look the player already had as a guest.
+    void post('/account/character', creator.current()).catch(() => null);
+    creator.open();
+  }
+});
+el('creator-open').onclick = () => creator.open();
 // The driver's details survive a reload so a deploy can put them back in a car.
 const driverKey = 'manchester-drive:driver';
 function savedDriver(): Commands['/join'] | null {

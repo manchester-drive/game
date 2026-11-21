@@ -1,12 +1,14 @@
 import type { VisiblePlayer, Snapshot } from '../protocol/snapshots';
-import { appearance, models, jackets, skinTones } from '../game/garage';
+import { appearance, models, type Character } from '../game/garage';
 import { gates, raceEntry } from '../game/race';
 import { drawGarage } from './renderer';
 
-export function el(id: 'bee' | 'map' | 'garage-preview'): HTMLCanvasElement;
-export function el(id: 'account-dialog'): HTMLDialogElement;
-export function el(id: 'account-form'): HTMLFormElement;
-export function el(id: 'model' | 'jacket' | 'skin' | 'chat-channel'): HTMLSelectElement;
+export function el(id: 'bee' | 'map' | 'garage-preview' | 'creator-preview'): HTMLCanvasElement;
+export function el(id: 'account-dialog' | 'creator'): HTMLDialogElement;
+export function el(id: 'account-form' | 'creator-form'): HTMLFormElement;
+export function el(
+  id: 'model' | 'jacket' | 'skin' | 'hairStyle' | 'hair' | 'trousers' | 'chat-channel',
+): HTMLSelectElement;
 export function el(
   id: 'name' | 'chat-input' | 'account-username' | 'account-password',
 ): HTMLInputElement;
@@ -20,15 +22,7 @@ export function el(id: string): HTMLElement {
   return element;
 }
 
-export function outfit() {
-  return appearance({
-    model: el('model').value,
-    jacket: el('jacket').value,
-    skin: el('skin').value,
-  });
-}
-
-export function setupGarage() {
+export function setupGarage(look: () => Character) {
   const bee = el('bee').getContext('2d')!;
   const sprite = [
     '..ww..ww.......',
@@ -57,26 +51,16 @@ export function setupGarage() {
       }
     }
 
-  for (const [id, palette] of [
-    ['model', models],
-    ['jacket', jackets],
-    ['skin', skinTones],
-  ] as const) {
-    for (const [key, value] of Object.entries(palette)) {
-      el(id).add(
-        new Option(
-          typeof value === 'string' ? key[0].toUpperCase() + key.slice(1) : value.name,
-          key,
-        ),
-      );
-    }
-    el(id).onchange = refreshPreview;
-  }
+  for (const [key, { name }] of Object.entries(models)) el('model').add(new Option(name, key));
+  el('model').onchange = refreshPreview;
   function refreshPreview() {
     drawGarage(el('garage-preview'), outfit());
   }
-  el('skin').value = 'tan';
+  function outfit() {
+    return appearance({ ...look(), model: el('model').value });
+  }
   refreshPreview();
+  return { outfit, refreshPreview };
 }
 
 export function notice(message: string) {
