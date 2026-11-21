@@ -17,6 +17,7 @@ import { livery } from '../game/garage';
 import { el, notice, setupGarage, updateHud } from './hud';
 import { leaveOnPageHide, post, subscribeToRoom } from './network';
 import { makeRenderer, viewport } from './renderer';
+import { makeGps } from './gps';
 import { setupWorldMap } from './world-map';
 
 useBrowserMap();
@@ -120,9 +121,16 @@ function saveDriver(driver: Commands['/join'] | null) {
 }
 let rejoinTried = false;
 const chat = setupChat(release);
-const worldMap = setupWorldMap(release);
+const gps = makeGps();
+const worldMap = setupWorldMap(release, gps);
 
 function updateUI() {
+  const driver = session && connected && predicted && !predicted.parkedCarId ? predicted : undefined;
+  gps.update(driver);
+  const guidance = el('gps-guidance');
+  guidance.hidden = !driver || freeCam || !gps.destination;
+  el('district').hidden = !guidance.hidden;
+  if (guidance.textContent !== gps.message) guidance.textContent = gps.message;
   worldMap.update(frames.at(-1)?.state.players ?? [], session?.id, connected);
   chat.updateSession(session?.token, connected);
   updateHud({
@@ -159,6 +167,7 @@ el('race-action').onclick = async () => {
   }
 };
 function reset() {
+  gps.setDestination();
   session = null;
   predicted = null;
   keyboard = touch = 0;
@@ -490,7 +499,8 @@ function draw(now: number) {
   const street = streetAt(focus.x, focus.y);
   const streetLabel = el('street-name');
   if (streetLabel.textContent !== street) streetLabel.textContent = street;
-  const view = render(world, freeCam ? undefined : session?.id, focus);
+  const drivingGps = !freeCam && connected && predicted && !predicted.parkedCarId ? gps : undefined;
+  const view = render(world, freeCam ? undefined : session?.id, focus, drivingGps);
   if (view) chat.drawBubbles(world.players, predicted, now, view);
   requestAnimationFrame(draw);
 }
