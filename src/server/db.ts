@@ -42,7 +42,14 @@ const migrations = [
    );
    CREATE INDEX vehicles_user ON vehicles(user_id);
    CREATE UNIQUE INDEX one_starter ON vehicles(user_id) WHERE acquired_via = 'starter';`,
+  // Where each vehicle was last left, so its owner can carry on from there.
+  `ALTER TABLE vehicles ADD COLUMN parked_x REAL;
+   ALTER TABLE vehicles ADD COLUMN parked_y REAL;
+   ALTER TABLE vehicles ADD COLUMN parked_angle REAL;
+   ALTER TABLE vehicles ADD COLUMN parked_at INTEGER;`,
 ];
+
+export const schemaVersion = migrations.length;
 
 export function openDatabase(path = Bun.env.DATABASE_PATH ?? 'data/game.db') {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });

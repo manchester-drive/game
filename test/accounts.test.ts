@@ -5,12 +5,15 @@ import { GameRoom } from '../src/server/room';
 import { createRoutes } from '../src/server/routes';
 import { useServerMap } from '../src/server/map';
 import { startAreas } from '../src/game/areas';
+import { startingPositions } from '../src/game/streets';
+import { useCar } from '../src/game/world';
 
 useServerMap();
 
 function setup(now = Date.now) {
   const room = new GameRoom();
   const accounts = new Accounts(openDatabase(':memory:'), now);
+  room.onPark = (userId, vehicleId, pose) => accounts.park(userId, vehicleId, pose);
   const api = createRoutes(room, accounts, () => {}, () => true);
   let cookie = '';
   async function post(path: string, body: unknown, withCookie = true) {
@@ -23,9 +26,15 @@ function setup(now = Date.now) {
     if (set && withCookie) cookie = set.split(';')[0].endsWith('=') ? '' : set.split(';')[0];
     return { status: response.status, body: await response.json(), setCookie: set };
   }
-  const me = async () =>
-    (await api.request('/account/me', { headers: cookie ? { Cookie: cookie } : {} })).status;
-  return { room, post, me, signOut: () => (cookie = '') };
+  const account = () => api.request('/account/me', { headers: cookie ? { Cookie: cookie } : {} });
+  const me = async () => (await account()).status;
+  const profile = async () => (await account()).json();
+  function signOut() {
+    const previous = cookie;
+    cookie = '';
+    return previous;
+  }
+  return { room, post, me, profile, signOut, signIn: (previous: string) => (cookie = previous) };
 }
 
 test('signup starts a session, rejects taken or reserved names and logout ends it', async () => {
@@ -198,4 +207,66 @@ test('the garage switches between owned vehicles and repaints without changing t
   await post('/account/signup', { username: 'Mona', password: 'correct horse' });
   expect((await post('/account/vehicles/active', { id: van.id })).status).toBe(404);
   expect((await post('/account/vehicles/paint', { id: van.id, paint: 'snow' })).status).toBe(404);
+});
+
+test('accounts carry on from where they parked, on foot or driving', async () => {
+  const { room, post, profile } = setup();
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  await post('/account/vehicles/starter', { model: 'hatch' });
+  await post('/account/area', { area: 'chorlton' });
+  const first = await post('/join', {});
+  const [x, y, angle] = startingPositions(startAreas.deansgate).next().value!;
+  Object.assign(room.sessionFor(first.body.token)!.player, { x, y, angle, speed: 0 });
+
+  // A second tab parks the first car and resumes exactly where it stood.
+  const second = await post('/join', {});
+  expect(room.sessionFor(second.body.token)!.player).toMatchObject({ x, y, angle });
+  expect((await profile()).vehicles[0].parked).toMatchObject({ x, y, angle });
+
+  // On foot, the spot is the parked car, not where the player walked to.
+  const walker = room.sessionFor(second.body.token)!.player;
+  expect(useCar(room.world, walker, 'exit')).toBeUndefined();
+  const car = { ...walker.parkedCar! };
+  walker.x += 40;
+  room.leave(room.sessionFor(second.body.token)!);
+  const third = await post('/join', {});
+  expect(room.sessionFor(third.body.token)!.player).toMatchObject({
+    x: car.x,
+    y: car.y,
+    angle: car.angle,
+  });
+});
+
+test('a blocked parking spot falls back to the nearest clear street', async () => {
+  const { room, post, signOut, signIn } = setup();
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  await post('/account/vehicles/starter', { model: 'hatch' });
+  const first = await post('/join', {});
+  const spot = { ...room.sessionFor(first.body.token)!.player };
+  room.leave(room.sessionFor(first.body.token)!);
+  const cookie = signOut();
+
+  // A guest pulls into the empty space.
+  const guest = await post('/join', { name: 'Mona' }, false);
+  Object.assign(room.sessionFor(guest.body.token)!.player, { x: spot.x, y: spot.y, angle: spot.angle });
+
+  signIn(cookie);
+  const back = room.sessionFor((await post('/join', {})).body.token)!.player;
+  const distance = Math.hypot(back.x - spot.x, back.y - spot.y);
+  expect(distance).toBeGreaterThan(0);
+  expect(distance / 5).toBeLessThan(100);
+});
+
+test('picking an area applies to the next drive, then the player resumes from parking', async () => {
+  const { room, post, profile } = setup();
+  await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  await post('/account/vehicles/starter', { model: 'hatch' });
+  await post('/account/area', { area: 'didsbury' });
+  const first = await post('/join', {});
+  expect((await profile()).startArea).toBe('parked');
+  room.parkAll();
+  expect((await profile()).vehicles[0].parked).not.toBeNull();
+  const spot = { ...room.sessionFor(first.body.token)!.player };
+  const again = room.sessionFor((await post('/join', {})).body.token)!.player;
+  expect(again).toMatchObject({ x: spot.x, y: spot.y });
 });

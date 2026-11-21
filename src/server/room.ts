@@ -2,7 +2,7 @@ import { chatHistoryLimit, type ChatMessage } from '../protocol/chat';
 import { cellKey, type CellBounds } from '../game/spatial';
 import { viewCellSize } from '../protocol/view';
 import { activeCells } from './neighbourhoods';
-import type { Player, Position, World } from '../game/game-types';
+import type { Player, Pose, Position, World } from '../game/game-types';
 import { liveryColours, type GarageOptions, type Livery } from '../game/garage';
 import { raceCommand, withdraw } from '../game/race';
 import { COLORS, createWorld, findRaceGrid, placePlayer, step, useCar } from '../game/world';
@@ -12,6 +12,7 @@ export interface RoomSession {
   readonly token: string;
   readonly player: Player;
   readonly userId?: string;
+  readonly vehicleId?: string;
   lastInputAt: number;
   sequence: number;
 }
@@ -25,6 +26,8 @@ export class GameRoom {
   private readonly inputs = new Map<string, number>();
   private readonly npcSchedule = new WeakMap<Position, { lastTick: number; phase: number }>();
   private nextPhase = 0;
+  // Called with where an account's vehicle was left: on leave, timeout, replacement and shutdown.
+  onPark?: (userId: string, vehicleId: string, pose: Pose) => void;
   private accumulator = 0;
   private tick = 0;
 
@@ -37,7 +40,7 @@ export class GameRoom {
     name: string,
     options: GarageOptions = {},
     positions?: Iterable<number[]>,
-    { userId, livery }: { userId?: string; livery?: Livery } = {},
+    { userId, livery, vehicleId }: { userId?: string; livery?: Livery; vehicleId?: string } = {},
   ): Credentials | { error: string } {
     const id = crypto.randomUUID();
     const usage = new Map<string, number>();
@@ -60,14 +63,18 @@ export class GameRoom {
     );
     if (!player) return { error: 'Could not find a clear starting position. Try again shortly.' };
     Object.assign(player, paintwork);
-    if (userId) {
-      // An account drives one car at a time. A second tab or a rejoin replaces the first.
-      for (const session of this.sessions.values())
-        if (session.userId === userId) this.leave(session);
-    } else player.guest = true;
+    if (userId) this.leaveAccount(userId);
+    else player.guest = true;
 
     const token = crypto.randomUUID();
-    this.sessions.set(token, { token, player, userId, lastInputAt: this.now(), sequence: -1 });
+    this.sessions.set(token, {
+      token,
+      player,
+      userId,
+      vehicleId,
+      lastInputAt: this.now(),
+      sequence: -1,
+    });
     this.world.players.push(player);
     return { id, token };
   }
@@ -76,7 +83,26 @@ export class GameRoom {
     return this.sessions.get(token);
   }
 
+  // An account drives one car at a time. A second tab or a rejoin replaces the first.
+  leaveAccount(userId: string) {
+    for (const session of this.sessions.values())
+      if (session.userId === userId) this.leave(session);
+  }
+
+  // Saves every account's current spot, so a crash or deploy loses little.
+  parkAll() {
+    for (const session of this.sessions.values()) this.park(session);
+  }
+
+  private park({ userId, vehicleId, player }: RoomSession) {
+    if (!userId || !vehicleId || !this.onPark) return;
+    // On foot, the spot is the car the player walked away from.
+    const { x, y, angle } = player.parkedCar ?? player;
+    this.onPark(userId, vehicleId, { x, y, angle });
+  }
+
   leave(session: RoomSession) {
+    this.park(session);
     const id = session.player.id;
     withdraw(this.world, id);
     this.world.players = this.world.players.filter((p) => p.id !== id);

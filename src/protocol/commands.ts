@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { maxViewSpan } from './view';
 import { chatTextLimit } from './chat';
 import type { Character, Livery } from '../game/garage';
-import type { StartArea } from '../game/areas';
+import type { StartChoice } from '../game/areas';
+import type { Pose } from '../game/game-types';
 
 export interface Credentials {
   id: string;
@@ -48,13 +49,14 @@ export interface AccountCredentials {
 export interface OwnedVehicle extends Livery {
   id: string;
   acquiredVia: 'starter' | 'purchase' | 'reward';
+  parked: (Pose & { at: number }) | null;
 }
 export interface AccountProfile {
   username: string;
   character: Character | null;
   vehicles: OwnedVehicle[];
   activeVehicleId: string | null;
-  startArea: StartArea;
+  startArea: StartChoice;
 }
 export interface Commands {
   '/account/signup': AccountCredentials;
@@ -64,9 +66,9 @@ export interface Commands {
   '/account/vehicles/starter': Livery;
   '/account/vehicles/active': { id: string };
   '/account/vehicles/paint': Livery & { id: string };
-  '/account/area': { area: StartArea };
+  '/account/area': { area: StartChoice };
   '/view': z.input<typeof viewCommand>;
-  '/join': Character & Partial<Livery> & { name: string; area?: StartArea };
+  '/join': Character & Partial<Livery> & { name: string; area?: StartChoice };
   '/leave': Token;
   '/chat': Token & z.input<typeof chatCommand>;
   '/input': Token & z.input<typeof inputCommand>;

@@ -15,7 +15,8 @@ import {
 } from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
 import { character, livery, models } from '../game/garage';
-import { startArea, startAreas } from '../game/areas';
+import { startArea, startAreas, startChoice } from '../game/areas';
+import type { Pose } from '../game/game-types';
 import { startingPositions } from '../game/streets';
 import {
   credentialsBody,
@@ -29,6 +30,12 @@ type Variables = { body: Record<string, unknown>; session: RoomSession };
 type Env = { Variables: Variables; Bindings: { requestIP?(req: Request): { address: string } | null } };
 const commandBody = z.record(z.string(), z.unknown());
 export const accountCookie = 'md_account';
+
+// Try the exact parking spot first, then the nearest clear street to it.
+function* resume(spot: Pose) {
+  yield [spot.x, spot.y, spot.angle];
+  yield* startingPositions(spot);
+}
 
 function clientIP(c: Context<Env>) {
   // Fly's proxy sets this header. Direct connections fall back to the socket address.
@@ -96,7 +103,7 @@ export function createRoutes(
       character: accounts.character(fresh.id),
       vehicles: accounts.vehicles(fresh.id),
       activeVehicleId: fresh.active_vehicle_id,
-      startArea: startArea(fresh.start_area),
+      startArea: startChoice(fresh.start_area),
     };
   }
   function signedIn(c: Context<Env>) {
@@ -152,7 +159,7 @@ export function createRoutes(
   api.post('/account/area', (c) => {
     const user = signedIn(c);
     if (!user) return c.json({ error: 'Log in to save a starting area.' }, 401);
-    accounts.saveStartArea(user.id, startArea(c.var.body.area));
+    accounts.saveStartArea(user.id, startChoice(c.var.body.area));
     return c.json(publicUser(user));
   });
   api.post('/account/vehicles/active', (c) => {
@@ -180,14 +187,27 @@ export function createRoutes(
   });
   api.post('/join', (c) => {
     const body = c.var.body;
-    const user = signedIn(c);
-    if (user) {
+    const signedInUser = signedIn(c);
+    if (signedInUser) {
+      // Park any car this account already has in the room, so a rejoin resumes from it.
+      room.leaveAccount(signedInUser.id);
+      const user = accounts.user(signedInUser.id)!;
       // The stored character and active vehicle win over anything the request sends.
       const vehicle = accounts.activeVehicle(user);
       if (!vehicle) return c.json({ error: 'Pick your first vehicle before driving.' }, 409);
       const look = character(accounts.character(user.id) ?? {});
-      const positions = startingPositions(startAreas[startArea(user.start_area)]);
-      const result = room.join(user.username, look, positions, { userId: user.id, livery: vehicle });
+      const choice = startChoice(user.start_area);
+      const positions =
+        choice === 'parked' && vehicle.parked
+          ? resume(vehicle.parked)
+          : startingPositions(startAreas[startArea(choice)]);
+      const result = room.join(user.username, look, positions, {
+        userId: user.id,
+        livery: vehicle,
+        vehicleId: vehicle.id,
+      });
+      // A chosen area is used for one drive. After that, the player carries on from where they park.
+      if (!('error' in result)) accounts.saveStartArea(user.id, 'parked');
       return 'error' in result ? c.json(result, 409) : c.json(result, 201);
     }
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 16) : '';

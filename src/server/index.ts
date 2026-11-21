@@ -31,6 +31,8 @@ export function createGameServer({
     token?: string;
   }
   const viewers = new Map<string, Viewer>();
+  const accounts = new Accounts(database);
+  room.onPark = (userId, vehicleId, pose) => accounts.park(userId, vehicleId, pose);
   let stopping = false;
   const defaultArea = cameraCells(JUNCTION, 800, 500);
   function broadcast(frameFor: (viewer: Viewer) => Uint8Array | undefined) {
@@ -102,7 +104,7 @@ export function createGameServer({
     },
     fetch: createRoutes(
       room,
-      new Accounts(database),
+      accounts,
       (event, sender) => {
         const frame = encodeChat(event);
         broadcast(({ token }) => {
@@ -121,6 +123,8 @@ export function createGameServer({
     ).fetch,
   });
 
+  // Leaving and shutdown save spots too. This bounds what a crash can lose.
+  const parking = setInterval(() => room.parkAll(), 30_000);
   let last = performance.now();
   const timer = setInterval(() => {
     const now = performance.now();
@@ -137,6 +141,8 @@ export function createGameServer({
     async stop() {
       stopping = true;
       clearInterval(timer);
+      clearInterval(parking);
+      room.parkAll();
       for (const { stream } of viewers.values()) {
         stream.enqueue(restartEvent);
         stream.close();

@@ -15,6 +15,13 @@ export const startAreas = {
 } satisfies Record<string, Position & { name: string }>;
 export type StartArea = keyof typeof startAreas;
 
+// Accounts can also carry on from where their active vehicle was left.
+export type StartChoice = StartArea | 'parked';
+
+export function startChoice(key: unknown): StartChoice {
+  return key === 'parked' ? key : startArea(key);
+}
+
 export function startArea(key: unknown): StartArea {
   return typeof key === 'string' && Object.hasOwn(startAreas, key) ? (key as StartArea) : 'piccadilly';
 }

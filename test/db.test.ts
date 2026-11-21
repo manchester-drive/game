@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDatabase } from '../src/server/db';
+import { openDatabase, schemaVersion } from '../src/server/db';
 
 test('migrations create the schema once and survive reopening a file', () => {
   const dir = mkdtempSync(join(tmpdir(), 'manchester-drive-'));
@@ -14,7 +14,7 @@ test('migrations create the schema once and survive reopening a file', () => {
     );
     first.close();
     const second = openDatabase(path);
-    expect(second.query('PRAGMA user_version').get()).toEqual({ user_version: 1 });
+    expect(second.query('PRAGMA user_version').get()).toEqual({ user_version: schemaVersion });
     expect(second.query('SELECT username FROM users').all()).toEqual([{ username: 'Ada' }]);
     second.close();
   } finally {
@@ -33,7 +33,8 @@ test('usernames are unique regardless of case and each user gets one starter car
     ),
   ).toThrow();
   const car = db.prepare(
-    "INSERT INTO vehicles VALUES ($id, 'u1', 'hatch', 'teal', 'silver', 'none', 'ADA', $via, 0)",
+    `INSERT INTO vehicles (id, user_id, model, paint, trim, stripe, plate, acquired_via, acquired_at)
+     VALUES ($id, 'u1', 'hatch', 'teal', 'silver', 'none', 'ADA', $via, 0)`,
   );
   car.run({ id: 'v1', via: 'starter' });
   expect(() => car.run({ id: 'v2', via: 'starter' })).toThrow();

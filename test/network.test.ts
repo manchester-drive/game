@@ -6,6 +6,10 @@ import { models } from '../src/game/garage';
 import { cameraCells } from '../src/protocol/view';
 import { JUNCTION } from '../src/game/streets';
 import { createGameServer } from '../src/server';
+import { openDatabase } from '../src/server/db';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 async function readEvents<K extends 'message' | 'chat'>(
   url: URL,
@@ -361,4 +365,28 @@ test('local speech reaches nearby players on their live streams and stays out of
   expect(await spectator()).toEqual(global);
   const reconnect = await readEvents(server.url, abort.signal, 'chat');
   expect(await reconnect()).toEqual({ type: 'history', messages: [global.message] });
+});
+
+test('stopping the server parks signed-in drivers where they are', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'manchester-drive-'));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'game.db');
+  const server = createGameServer({ hostname: '127.0.0.1', port: 0, database: openDatabase(path) });
+  const post = (route: string, payload: unknown, cookie = '') =>
+    fetch(new URL(route, server.url), {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: cookie ? { Cookie: cookie } : {},
+    });
+  const signup = await post('/account/signup', { username: 'Ada', password: 'correct horse' });
+  const cookie = signup.headers.get('Set-Cookie')!.split(';')[0];
+  await post('/account/vehicles/starter', { model: 'hatch' }, cookie);
+  expect((await post('/join', {}, cookie)).status).toBe(201);
+  await server.stop();
+
+  const db = openDatabase(path);
+  expect(db.query('SELECT parked_x IS NOT NULL AS parked FROM vehicles').get()).toEqual({
+    parked: 1,
+  });
+  db.close();
 });

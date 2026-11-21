@@ -69,9 +69,17 @@ export function setupAccount(
     }
   };
 
-  fetch('/account/me')
-    .then((response) => (response.ok ? response.json() : null))
-    .then(show, () => show(null));
+  // Reloads the profile, for example to pick up where the server parked the car.
+  function refresh() {
+    return fetch('/account/me')
+      .then((response) => (response.ok ? response.json() : null))
+      .then(show, () => show(account));
+  }
+  void refresh();
 
-  return { current: () => account, replace: (profile: AccountProfile) => show(profile) };
+  return {
+    current: () => account,
+    replace: (profile: AccountProfile) => show(profile),
+    refresh,
+  };
 }

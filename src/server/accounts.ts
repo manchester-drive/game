@@ -2,7 +2,8 @@ import type { Database } from 'bun:sqlite';
 import { z } from 'zod';
 import { character, livery, models, type Character, type Livery } from '../game/garage';
 import type { OwnedVehicle } from '../protocol/commands';
-import type { StartArea } from '../game/areas';
+import { startChoice, type StartChoice } from '../game/areas';
+import type { Pose } from '../game/game-types';
 
 export const sessionDays = 30;
 const sessionMs = sessionDays * 24 * 60 * 60 * 1000;
@@ -109,18 +110,35 @@ export class Accounts {
       .run({ user: userId, now: this.now(), ...look });
   }
 
-  saveStartArea(userId: string, area: StartArea) {
-    this.db.query('UPDATE users SET start_area = ? WHERE id = ?').run(area, userId);
+  saveStartArea(userId: string, area: StartChoice) {
+    this.db.query('UPDATE users SET start_area = ? WHERE id = ?').run(startChoice(area), userId);
+  }
+
+  park(userId: string, vehicleId: string, { x, y, angle }: Pose) {
+    this.db
+      .query(
+        `UPDATE vehicles SET parked_x = $x, parked_y = $y, parked_angle = $angle, parked_at = $now
+         WHERE id = $vehicle AND user_id = $user`,
+      )
+      .run({ user: userId, vehicle: vehicleId, x, y, angle, now: this.now() });
   }
 
   vehicles(userId: string): OwnedVehicle[] {
     const rows = this.db
       .query(
-        `SELECT id, model, paint, trim, stripe, plate, acquired_via AS acquiredVia
+        `SELECT id, model, paint, trim, stripe, plate, acquired_via AS acquiredVia,
+           parked_x AS x, parked_y AS y, parked_angle AS angle, parked_at AS at
          FROM vehicles WHERE user_id = ? ORDER BY acquired_at, id`,
       )
-      .all(userId) as (Record<keyof Livery, string> & Pick<OwnedVehicle, 'id' | 'acquiredVia'>)[];
-    return rows.map((row) => ({ id: row.id, acquiredVia: row.acquiredVia, ...livery(row) }));
+      .all(userId) as (Record<keyof Livery, string> &
+      Pick<OwnedVehicle, 'id' | 'acquiredVia'> &
+      Record<'x' | 'y' | 'angle' | 'at', number | null>)[];
+    return rows.map(({ id, acquiredVia, x, y, angle, at, ...rest }) => ({
+      id,
+      acquiredVia,
+      ...livery(rest),
+      parked: x === null || y === null || angle === null || at === null ? null : { x, y, angle, at },
+    }));
   }
 
   activeVehicle(user: User) {
@@ -167,7 +185,7 @@ export class Accounts {
     } catch {
       return { error: 'You already have your first vehicle.' };
     }
-    return { id, acquiredVia: 'starter', ...choice };
+    return { id, acquiredVia: 'starter', ...choice, parked: null };
   }
 
   private createSession(userId: string) {

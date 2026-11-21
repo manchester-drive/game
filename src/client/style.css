@@ -1140,3 +1140,6 @@ button.secondary {
   padding: 0 10px;
   font-size: 0.82rem;
 }
+#area-pins label.parked::after {
+  background: #8bd0c6;
+}

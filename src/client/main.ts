@@ -83,6 +83,7 @@ const account = setupAccount((profile, signedUp) => {
   const vehicle = activeVehicle(profile);
   if (vehicle) picker.set(vehicle);
   areas.set(profile?.startArea ?? 'piccadilly');
+  areas.setParked(vehicle?.parked ?? null);
   // The first car is free once. After that the garage switches cars and repaints them.
   el('car-open').textContent = vehicle ? 'Garage' : 'Choose car';
   if (signedUp) void welcome();
@@ -195,6 +196,8 @@ async function join(driver: Commands['/join']) {
     const result = await post('/join', driver);
     if (!result.ok) throw new Error(result.error || 'Could not join.');
     session = result.data;
+    // The server used up any chosen area. Next time the account carries on from where it parks.
+    if (account.current()) areas.set('parked');
     saveDriver(driver);
     sequence = 0;
     el('name').blur();
@@ -251,6 +254,7 @@ el('leave').onclick = async () => {
     const result = await post('/leave', { token });
     if (result.status === 200 || result.status === 401) {
       saveDriver(null);
+      if (account.current()) void account.refresh();
       reset();
       notice('');
     } else notice('Could not leave. Try again.');
