@@ -213,7 +213,7 @@ export function createRoutes(
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 16) : '';
     if (name && accounts.usernameTaken(name))
       return c.json({ error: 'That name belongs to a registered player. Log in or pick another.' }, 409);
-    // Guests drive a starter model and keep nothing.
+    // Guests join in a starter vehicle.
     const choice = livery(body);
     if (!models[choice.model].starter) choice.model = 'hatch';
     const positions = startingPositions(startAreas[startArea(body.area)]);

@@ -5,7 +5,7 @@ import { activeCells } from './neighbourhoods';
 import type { Player, Pose, Position, World } from '../game/game-types';
 import { liveryColours, type GarageOptions, type Livery } from '../game/garage';
 import { raceCommand, withdraw } from '../game/race';
-import { COLORS, createWorld, findRaceGrid, placePlayer, step, useCar } from '../game/world';
+import { COLORS, createWorld, findRaceGrid, placePlayer, releaseBorrowedCar, step, useCar } from '../game/world';
 import type { Credentials, DoorCommand, InputCommand, RaceCommand } from '../protocol/commands';
 
 export interface RoomSession {
@@ -96,8 +96,8 @@ export class GameRoom {
 
   private park({ userId, vehicleId, player }: RoomSession) {
     if (!userId || !vehicleId || !this.onPark) return;
-    // On foot, the spot is the car the player walked away from.
-    const { x, y, angle } = player.parkedCar ?? player;
+    // Account parking always follows the garage vehicle.
+    const { x, y, angle } = player.parkedCar ?? player.borrowed?.ownCar ?? player;
     this.onPark(userId, vehicleId, { x, y, angle });
   }
 
@@ -105,6 +105,7 @@ export class GameRoom {
     this.park(session);
     const id = session.player.id;
     withdraw(this.world, id);
+    releaseBorrowedCar(this.world, session.player);
     this.world.players = this.world.players.filter((p) => p.id !== id);
     this.inputs.delete(id);
     this.sessions.delete(session.token);
@@ -126,11 +127,12 @@ export class GameRoom {
   vehicle(session: RoomSession, command: DoorCommand) {
     if (!this.acceptSequence(session, command.seq)) return 'Please try the door again.';
     this.inputs.set(session.player.id, 0);
-    return useCar(this.world, session.player, command.action);
+    return useCar(this.world, session.player, command.action, command.targetId);
   }
 
   chat(session: RoomSession, text: string): ChatMessage {
-    const { name, color, guest } = session.player;
+    const { name, guest, borrowed } = session.player;
+    const color = borrowed?.ownCar.color ?? session.player.color;
     const message: ChatMessage = { id: crypto.randomUUID(), name, color, text };
     if (guest) message.guest = true;
     this.chatHistory.push(message);

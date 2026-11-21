@@ -5,7 +5,7 @@ import { useBrowserMap } from './map';
 import { snapshotRoadUsers, type Snapshot, type VisiblePlayer } from '../protocol/snapshots';
 import { cameraCells } from '../protocol/view';
 import { streetAt } from '../game/streets';
-import { createWorld, drive, walk, JUNCTION } from '../game/world';
+import { createWorld, drive, walk, JUNCTION, nearestParkedCar } from '../game/world';
 import type { AccountProfile, Commands, Credentials } from '../protocol/commands';
 import { setupAccount } from './account';
 import { setupChat } from './chat';
@@ -133,6 +133,12 @@ function toggleShortcuts() {
 el('shortcuts-open').onclick = toggleShortcuts;
 el('shortcuts-close').onclick = () => shortcuts.close();
 
+function doorTarget() {
+  return predicted?.parkedCarId
+    ? nearestParkedCar(predicted, frames.at(-1)?.state.parkedCars ?? [], predicted.parkedCarId)
+    : undefined;
+}
+
 function updateUI() {
   const driver = session && connected && predicted && !predicted.parkedCarId ? predicted : undefined;
   gps.update(driver);
@@ -150,6 +156,7 @@ function updateUI() {
     connected,
     busy,
     doorBusy,
+    doorTarget: doorTarget(),
     raceBusy,
     dismissedRace,
   });
@@ -255,6 +262,7 @@ async function openDoor() {
       token: session.token,
       seq: ++sequence,
       action: predicted.parkedCarId ? 'enter' : 'exit',
+      targetId: doorTarget()?.id,
     });
     if (!result.ok) notice(result.error || 'Could not use the car door.');
   } catch {

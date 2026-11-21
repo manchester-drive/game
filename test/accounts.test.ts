@@ -165,7 +165,7 @@ test('the first vehicle must be a starter, is free once, and drives with its liv
   expect(room.chat(session, 'hi').color).toBe('#c0403c');
 });
 
-test('guests can only drive starter models', async () => {
+test('guests can only join in starter models', async () => {
   const { room, post } = setup();
   const coupe = await post('/join', { name: 'Mo', model: 'coupe', paint: 'sky' });
   expect(room.sessionFor(coupe.body.token)!.player).toMatchObject({ model: 'hatch', color: '#8ba9e4' });

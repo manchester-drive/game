@@ -1,9 +1,9 @@
 import type { ChatEvent } from './chat';
 import type { Player, Position, Vehicle, World } from '../game/game-types';
 
-export type VisiblePlayer = Omit<Player, 'parkedCar'> & { parkedCarId: string | null };
+export type VisiblePlayer = Omit<Player, 'parkedCar' | 'borrowed'> & { parkedCarId: string | null };
 
-export interface Snapshot extends Omit<World, 'players'> {
+export interface Snapshot extends Omit<World, 'players' | 'streetCars'> {
   players: VisiblePlayer[];
   parkedCars: Vehicle[];
   playerCount: number;

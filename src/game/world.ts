@@ -1,3 +1,4 @@
+import { parkedVehicles } from './game-types';
 import type { Player, Position, Racer, TrafficCar, Vehicle, World } from './game-types';
 import { SpatialGrid } from './spatial';
 import type { GarageOptions } from './garage';
@@ -304,11 +305,9 @@ function moveCar<T extends Vehicle>(
   if (!vehicleObstacle(slide, vehicles, people)) Object.assign(car, slide);
 }
 
-// A walking player still owns exactly one parked vehicle. Keeping it on the player
-// also removes both from the room together on leave or disconnect.
 export function roadUsers(world: World) {
   return {
-    vehicles: [...world.traffic, ...world.players.map((p) => p.parkedCar ?? p)],
+    vehicles: [...world.traffic, ...parkedVehicles(world), ...world.players.filter((p) => !p.parkedCar)],
     people: [...world.people, ...world.players.filter((p) => p.parkedCar)],
   };
 }
@@ -343,72 +342,104 @@ export function walk(
   player.speed = Math.hypot(player.x - oldX, player.y - oldY) / dt;
 }
 
-export function useCar(world: World, player: Player, action: 'enter' | 'exit') {
-  const parked = player.parkedCar;
-  if (action !== (parked ? 'enter' : 'exit')) return 'Your position has changed.';
-  if (
-    !parked &&
-    (Math.abs(player.speed) > 2 || Math.hypot(player.slideX || 0, player.slideY || 0) > 2)
-  )
-    return 'Stop the car before getting out.';
-  const car = parked ?? player;
-  const { vehicles, people } = roadUsers(world);
-  const others = vehicles.filter((v) => v.id !== car.id);
+function vehicleStyle(car: Vehicle) {
+  return {
+    model: car.model ?? 'hatch',
+    color: car.color,
+    roof: car.roof,
+    stripe: car.stripe,
+    plate: car.plate,
+  };
+}
+
+function parkVehicle(car: Player, id: string): Vehicle {
+  return {
+    id, x: car.x, y: car.y, angle: car.angle,
+    ...vehicleStyle(car), speed: 0, parked: true, rearLights: 'tail',
+  };
+}
+
+// A shared car stays in the room even when its driver disconnects.
+export function releaseBorrowedCar(world: World, player: Player) {
+  if (!player.borrowed) return;
+  world.streetCars.push({ ...parkVehicle(player, player.borrowed.id), shared: true });
+  player.parkedCar = player.borrowed.ownCar;
+  Object.assign(player, vehicleStyle(player.parkedCar));
+  delete player.borrowed;
+}
+
+function doors(car: Vehicle) {
   const offset = vehicleBox(car).hy + 5;
-  for (const side of [1, -1]) {
-    const door = {
-      id: player.id,
-      x: car.x - side * Math.sin(car.angle) * offset,
-      y: car.y + side * Math.cos(car.angle) * offset,
-    };
-    if (parked && Math.hypot(player.x - door.x, player.y - door.y) > 12) continue;
-    // Sweep between the actor and the seat so a wall, post or another player
-    // between them also blocks the interaction.
-    const start = parked ? player : car,
-      end = parked ? car : door;
-    const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / 2));
-    let clear = true;
-    for (let i = 1; i <= steps; i++) {
-      const p = {
-        id: player.id,
-        x: start.x + ((end.x - start.x) * i) / steps,
-        y: start.y + ((end.y - start.y) * i) / steps,
-      };
-      if (obstacle(p, others, people, personBox(p))) {
-        clear = false;
-        break;
+  return [1, -1].map(side => ({
+    x: car.x - side * Math.sin(car.angle) * offset,
+    y: car.y + side * Math.cos(car.angle) * offset,
+  }));
+}
+
+function clearDoorPath(id: string, from: Position, to: Position, cars: Vehicle[], people: PersonBody[]) {
+  const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 2));
+  for (let i = 1; i <= steps; i++) {
+    const p = { id, x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps };
+    if (obstacle(p, cars, people, personBox(p))) return false;
+  }
+  return true;
+}
+
+// A walker between two cars selects the one whose door is closest.
+export function nearestParkedCar(person: Position, cars: Vehicle[], ownId: string) {
+  let nearest: Vehicle | undefined;
+  let best = 12;
+  for (const car of cars) {
+    if (!car.shared && car.id !== ownId) continue;
+    if (Math.abs(person.x - car.x) > 24 || Math.abs(person.y - car.y) > 24) continue;
+    for (const door of doors(car)) {
+      const distance = Math.hypot(person.x - door.x, person.y - door.y);
+      if (distance <= best) {
+        nearest = car;
+        best = distance;
       }
     }
-    if (!clear) continue;
-    if (parked) {
-      Object.assign(player, { x: car.x, y: car.y, angle: car.angle, parkedCar: null });
-    } else {
-      withdraw(world, player.id);
-      player.parkedCar = {
-        id: 'parked-' + player.id,
-        parked: true,
-        x: car.x,
-        y: car.y,
-        angle: car.angle,
-        model: car.model,
-        color: car.color,
-        roof: car.roof,
-        stripe: car.stripe,
-        plate: car.plate,
-        speed: 0,
-        rearLights: 'tail',
-      };
-      player.x = door.x;
-      player.y = door.y;
-    }
-    player.speed = player.slideX = player.slideY = 0;
-    player.rearLights = 'tail';
-    return;
   }
-  return parked
-    ? 'Walk up beside your parked car.'
-    : 'Both doors are blocked. Move the car and try again.';
+  return nearest;
 }
+
+export function exitDoor(car: Vehicle, others: Vehicle[], people: PersonBody[]) {
+  return doors(car).find(d => clearDoorPath(car.id, car, d, others, people));
+}
+
+export function useCar(world: World, player: Player, action: 'enter' | 'exit', targetId?: string) {
+  const own = player.parkedCar;
+  if (action !== (own ? 'enter' : 'exit')) return 'Your position has changed.';
+  const { vehicles, people } = roadUsers(world);
+  if (own) {
+    // Only the player's own car and currently unoccupied street vehicles are eligible.
+    const target = nearestParkedCar(player, [own, ...world.streetCars], own.id);
+    if (targetId && target?.id !== targetId) return 'That car is no longer within reach.';
+    if (!target) return 'Walk up beside your car or an available street vehicle.';
+    if (!clearDoorPath(player.id, player, target, vehicles.filter(v => v !== target), people))
+      return 'The door is blocked. Try the other side.';
+    if (target !== own) {
+      world.streetCars.splice(world.streetCars.indexOf(target), 1);
+      player.borrowed = { id: target.id, ownCar: own };
+    }
+    Object.assign(player, vehicleStyle(target), {
+      x: target.x, y: target.y, angle: target.angle, parkedCar: null,
+    });
+  } else {
+    if (Math.abs(player.speed) > 2 || Math.hypot(player.slideX || 0, player.slideY || 0) > 2)
+      return 'Stop the car before getting out.';
+    const others = vehicles.filter(v => v !== player);
+    const door = exitDoor(player, others, people);
+    if (!door) return 'Both doors are blocked. Move the car and try again.';
+    withdraw(world, player.id);
+    if (player.borrowed) releaseBorrowedCar(world, player);
+    else player.parkedCar = parkVehicle(player, 'parked-' + player.id);
+    Object.assign(player, door);
+  }
+  player.speed = player.slideX = player.slideY = 0;
+  player.rearLights = 'tail';
+}
+
 export function findRaceGrid(world: World, racers: Racer[]) {
   const { vehicles, people } = roadUsers(world);
   const traffic = vehicles.filter((v) => !racers.some((r) => r.id === v.id));
@@ -419,6 +450,13 @@ export function findRaceGrid(world: World, racers: Racer[]) {
     if (cars.every((car) => !vehicleObstacle(car, [...traffic, ...cars], people))) return slots;
   }
   return null;
+}
+
+export function canPark(v: Vehicle, vehicles: Vehicle[], people: PersonBody[]) {
+  if (vehicleObstacle(v, vehicles, people)) return false;
+  // A road can pass through a building. Edge contacts alone miss a car fully inside it.
+  const chunk = mapChunk(v.x, v.y);
+  return !!chunk && !chunk.buildings.some(({ rings }) => insidePolygon(v.x, v.y, rings));
 }
 
 export function placePlayer(
@@ -444,10 +482,7 @@ export function placePlayer(
       speed: 0,
       rearLights: 'tail',
     };
-    if (vehicleObstacle(v, vehicles, people)) continue;
-    // A road can pass through a building. Edge contacts alone miss a car fully inside it.
-    const buildings = mapChunk(x, y)?.buildings;
-    if (buildings && !buildings.some(({ rings }) => insidePolygon(x, y, rings))) return v;
+    if (canPark(v, vehicles, people)) return v;
   }
   return null;
 }
@@ -589,7 +624,7 @@ export function createWorld(): World {
       };
     });
   });
-  return { time: 0, players: [], traffic, people, race: null };
+  return { time: 0, players: [], streetCars: [], traffic, people, race: null };
 }
 
 export function step(

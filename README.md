@@ -11,7 +11,7 @@ bun install --frozen-lockfile
 bun start
 ```
 
-Open [the game](http://127.0.0.1:4173) in two browser windows. Play as a guest or sign up, then select **Drive**. The hatchback has balanced handling and the panel van is longer with a wider turning circle. The faster sports coupé is not a starter, so nobody can pick it yet. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or **Enter car** to drive again. Other players can see your character and parked car. **Leave game** removes your character and car from the room.
+Open [the game](http://127.0.0.1:4173) in two browser windows. Play as a guest or sign up, then select **Drive**. The hatchback has balanced handling and the panel van is longer with a wider turning circle. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or tap the **Enter** button to drive. Each starting area has parked street vehicles, including hatchbacks, panel vans, sports coupés and black cabs. Walk up to one and the button names the vehicle you can enter. Your own car stays where you left it. When you get out of a borrowed vehicle or leave the game, anyone can drive it from that spot. Other players can see your character and parked car. **Leave game** removes your character and car from the room.
 
 ## Guests and accounts
 

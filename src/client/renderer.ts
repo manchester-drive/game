@@ -513,6 +513,11 @@ function car(g: Context, v: CarSprite, local: boolean, time: number) {
     R(-7, -3, 9, 1, '#ffffff55');
     R(-7, 2, 9, 1, '#00000030');
     R(3, -3, 2, 6, '#8ba4a2');
+  } else if (v.model === 'cab') {
+    R(-6, -4, 8, 8, '#252c30');
+    R(-6, -3, 2, 6, '#789095');
+    R(1, -2, 2, 4, '#ffca56');
+    R(8, -2, 1, 4, '#b5bbb7');
   } else if (v.model === 'coupe') {
     R(-5, -3, 5, 6, '#31484d');
     R(-4, -2, 3, 4, '#647e82');

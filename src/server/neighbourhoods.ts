@@ -1,4 +1,4 @@
-import type { Player, Position, World } from '../game/game-types';
+import { parkedVehicles, type Player, type Position, type World } from '../game/game-types';
 import { cellKey, SpatialGrid, type CellBounds } from '../game/spatial';
 import { encodeSnapshot } from '../protocol/snapshots';
 import { areaKey, cameraCells, viewCellSize } from '../protocol/view';
@@ -15,15 +15,12 @@ export function neighbourhoodFrames(world: World) {
   const people = new SpatialGrid(viewCellSize, world.people);
   const players = new SpatialGrid(
     viewCellSize,
-    world.players.map(({ parkedCar, ...body }) => ({
+    world.players.map(({ parkedCar, borrowed, ...body }) => ({
       ...body,
       parkedCarId: parkedCar?.id ?? null,
     })),
   );
-  const parked = new SpatialGrid(
-    viewCellSize,
-    world.players.flatMap((p) => (p.parkedCar ? [p.parkedCar] : [])),
-  );
+  const parked = new SpatialGrid(viewCellSize, parkedVehicles(world));
   const frames = new Map<string, Uint8Array>();
   return (camera: CellBounds, driver?: Player) => {
     const local = driver && cameraCells(driver, 0, 0);

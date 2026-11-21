@@ -11,6 +11,7 @@ import type { CellBounds } from '../game/spatial';
 import { neighbourhoodFrames } from './neighbourhoods';
 import { encodeChat, encodeHello, restartEvent, snapshotPath } from '../protocol/snapshots';
 import { GameRoom } from './room';
+import { populateStreetCars } from './street-cars';
 import { createRoutes } from './routes';
 import { openDatabase } from './db';
 import { Accounts } from './accounts';
@@ -26,6 +27,7 @@ export function createGameServer({
   database = openDatabase(':memory:'),
 } = {}) {
   useServerMap();
+  populateStreetCars(room.world);
   interface Viewer {
     stream: ReadableStreamDefaultController<Uint8Array>;
     area: CellBounds;

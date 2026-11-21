@@ -31,7 +31,7 @@ export const chatCommand = z.object({
   text: z.string().trim().min(1).max(chatTextLimit),
   channel: z.enum(['global', 'local']).default('global'),
 });
-export const doorCommand = z.object({ seq: z.int(), action: z.enum(['enter', 'exit']) });
+export const doorCommand = z.object({ seq: z.int(), action: z.enum(['enter', 'exit']), targetId: z.string().optional() });
 export const raceCommandBody = z.object({
   action: z.enum(['open', 'join', 'withdraw']),
   raceId: z.string().nullable(),

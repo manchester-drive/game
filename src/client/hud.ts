@@ -1,5 +1,6 @@
 import type { VisiblePlayer, Snapshot } from '../protocol/snapshots';
-import type { Character, Livery } from '../game/garage';
+import { models, type Character, type Livery } from '../game/garage';
+import type { Vehicle } from '../game/game-types';
 import { gates, raceEntry } from '../game/race';
 import { drawGarage } from './renderer';
 
@@ -86,6 +87,7 @@ interface HudState {
   connected: boolean;
   busy: boolean;
   doorBusy: boolean;
+  doorTarget?: Vehicle;
   raceBusy: boolean;
   dismissedRace?: string;
 }
@@ -112,8 +114,11 @@ export function updateHud(state: HudState) {
   el('leave').hidden = !playerId;
   const race = world?.race,
     entry = raceEntry(race, playerId);
+  const enterLabel = state.doorTarget?.shared
+    ? 'Enter ' + models[state.doorTarget.model ?? 'hatch'].name.toLowerCase()
+    : 'Enter car';
   el('door').textContent = onFoot
-    ? 'Enter car'
+    ? enterLabel
     : entry && !entry.withdrawn && entry.elapsed === null
       ? 'Exit car & race'
       : 'Get out';

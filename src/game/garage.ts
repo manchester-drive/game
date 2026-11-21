@@ -23,6 +23,16 @@ export const models = {
     acceleration: 80,
     turn: 2.45,
   },
+  cab: {
+    name: 'Black cab',
+    kind: 'car',
+    starter: false,
+    length: 10.5,
+    width: 5.2,
+    topSpeed: 112,
+    acceleration: 72,
+    turn: 2.8,
+  },
   coupe: {
     name: 'Sports coupé',
     kind: 'car',

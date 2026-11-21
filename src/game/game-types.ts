@@ -20,6 +20,7 @@ export interface Vehicle extends Pose {
   rearLights?: 'tail' | 'brake' | 'reverse';
   indicating?: boolean;
   parked?: boolean;
+  shared?: boolean;
 }
 export interface TrafficCar extends Vehicle {
   lane: number;
@@ -30,7 +31,9 @@ export interface Player extends Vehicle, Appearance {
   // Guests have no account, so their names are not reserved.
   guest?: boolean;
   model: Appearance['model'];
+  // Set while walking. While borrowing, the personal vehicle stays at the same spot.
   parkedCar: Vehicle | null;
+  borrowed?: { id: string; ownCar: Vehicle };
 }
 export interface Pedestrian extends Position {
   id: string;
@@ -55,7 +58,17 @@ export interface Race {
 export interface World {
   time: number;
   players: Player[];
+  streetCars: Vehicle[];
   traffic: TrafficCar[];
   people: Pedestrian[];
   race: Race | null;
+}
+
+export function parkedVehicles(world: World): Vehicle[] {
+  const parked = [...world.streetCars];
+  for (const player of world.players) {
+    const own = player.parkedCar ?? player.borrowed?.ownCar;
+    if (own) parked.push(own);
+  }
+  return parked;
 }
