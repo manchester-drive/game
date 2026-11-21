@@ -25,10 +25,12 @@ export class GameRoom {
   constructor(private readonly now = Date.now) {}
 
   join(name: string, options: GarageOptions = {}): Credentials | { error: string } {
-    if (this.sessions.size >= 8)
-      return { error: 'The junction is full. Try again when a driver leaves.' };
     const id = crypto.randomUUID();
-    const color = COLORS.find((color) => !this.world.players.some((p) => p.color === color))!;
+    const usage = new Map<string, number>();
+    for (const { color } of this.world.players) usage.set(color, (usage.get(color) ?? 0) + 1);
+    const color = COLORS.reduce((best, next) =>
+      (usage.get(next) ?? 0) < (usage.get(best) ?? 0) ? next : best,
+    );
     const player = placePlayer(
       id,
       name.trim().slice(0, 16) || 'Driver',
@@ -36,7 +38,7 @@ export class GameRoom {
       this.world,
       options,
     );
-    if (!player) return { error: 'Traffic is blocking the starting bays. Try again shortly.' };
+    if (!player) return { error: 'Could not find a clear starting position. Try again shortly.' };
 
     const token = crypto.randomUUID();
     this.sessions.set(token, { token, player, lastInputAt: this.now(), sequence: -1 });

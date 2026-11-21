@@ -2,6 +2,7 @@ import { expect, test, onTestFinished } from 'bun:test';
 import type { ChatEvent } from '../src/protocol/chat';
 import type { Credentials } from '../src/protocol/commands';
 import type { World } from '../src/game/game-types';
+import { models } from '../src/game/garage';
 import { createGameServer } from '../src/server';
 
 async function readEvents<K extends 'message' | 'chat'>(url: URL, signal: AbortSignal, event: K) {
@@ -87,6 +88,35 @@ test('two clients share the same authoritative cars and controls belong to their
     frame = await streams[1]();
   } while (frame.players.some((p) => p.id === a.id));
   expect(frame.players.map((p) => p.id)).toStrictEqual([b.id]);
+});
+
+test('drivers can join together after the Piccadilly bays fill up', async () => {
+  const server = createGameServer({ hostname: '127.0.0.1', port: 0 });
+  const abort = new AbortController();
+  onTestFinished(async () => {
+    abort.abort();
+    await server.stop();
+  });
+  const drivers = await Promise.all(
+    Array.from({ length: 32 }, async (_, i) => {
+      const response = await fetch(new URL('/join', server.url), {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Driver ' + i, model: 'van' }),
+      });
+      expect(response.status).toBe(201);
+      return (await response.json()) as Credentials;
+    }),
+  );
+  const read = await readEvents(server.url, abort.signal, 'message');
+  const { players } = await read();
+  expect(players.map((p) => p.id).sort()).toEqual(drivers.map((d) => d.id).sort());
+  expect(new Set(drivers.map((d) => d.token)).size).toBe(drivers.length);
+  for (const [i, player] of players.entries()) {
+    expect(player.color).toMatch(/^#[0-9a-f]{6}$/i);
+    for (const other of players.slice(0, i)) {
+      expect(Math.hypot(other.x - player.x, other.y - player.y)).toBeGreaterThan(2 * models.van.width);
+    }
+  }
 });
 
 test('the Bun server serves the browser bundle and validates game commands', async () => {

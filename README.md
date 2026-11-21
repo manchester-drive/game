@@ -1,6 +1,6 @@
 # Manchester Drive
 
-Start at Piccadilly Gardens and explore Greater Manchester as far as the M60 on streets drawn from OpenStreetMap. One Bun process hosts the map for up to eight players. Cars, traffic signals and pedestrians are shared between browsers.
+Start at Piccadilly Gardens and explore Greater Manchester as far as the M60 on streets drawn from OpenStreetMap. One Bun process hosts a shared room with no fixed player limit. New drivers start in the Piccadilly bays or on a nearby clear street when the bays are occupied.
 
 ## Play
 
@@ -11,9 +11,9 @@ bun install --frozen-lockfile
 bun start
 ```
 
-Open [the game](http://127.0.0.1:4173) in two browser windows, choose a name, vehicle, jacket and skin tone, then select **Drive**. The hatchback has balanced handling, the sports coupé accelerates faster and the panel van is longer with a wider turning circle. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or **Enter car** to drive again. Other players can see your character and parked car. **Leave game** removes both and frees your place in the room.
+Open [the game](http://127.0.0.1:4173) in two browser windows, choose a name, vehicle, jacket and skin tone, then select **Drive**. The hatchback has balanced handling, the sports coupé accelerates faster and the panel van is longer with a wider turning circle. Use **W** to accelerate, **S** to brake and then reverse, and **A/D** to steer. Touch devices have on-screen controls. Stop and press **E** or select **Get out** to park. Walk with **WASD** or the on-screen arrows. The dashboard points back to your car. Stand beside either door and press **E** or **Enter car** to drive again. Other players can see your character and parked car. **Leave game** removes your character and car from the room.
 
-Select **Free cam** to explore before joining, while driving or on foot. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. Spectators can explore without claiming a driver slot. If you already have a car, it coasts while the camera is detached.
+Select **Free cam** to explore before joining, while driving or on foot. Drag the map with a mouse or finger, or pan with **WASD** or the **arrow keys**. Press **Esc** or use the camera button to return. If you already have a car, it coasts while the camera is detached.
 
 Global chat stays visible in the bottom-left corner. Click the message field or press **T** to type, **Enter** to send and **Esc** to return to the game. Joined players can send messages from anywhere on the map, including on foot and in free cam. Spectators can read along. The room keeps its most recent 50 messages in memory until the server restarts.
 

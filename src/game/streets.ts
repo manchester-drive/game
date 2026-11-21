@@ -1,5 +1,6 @@
 import {
   boundary,
+  chunkSize,
   mapChunk,
   namedStreets,
   pointInRing,
@@ -223,6 +224,50 @@ export const spawns = [
   const p = roadPosition(id, fraction);
   return [p.x - p.dy * (p.halfWidth - 3), p.y + p.dx * (p.halfWidth - 3), p.angle];
 });
+
+// Start at the usual bays, then search mapped streets outwards from Piccadilly.
+function startingChunks() {
+  const origins: Point[] = [];
+  const firstCol = Math.floor(Math.min(...xs) / chunkSize),
+    lastCol = Math.floor(Math.max(...xs) / chunkSize);
+  const firstRow = Math.floor(Math.min(...ys) / chunkSize),
+    lastRow = Math.floor(Math.max(...ys) / chunkSize);
+  for (let col = firstCol; col <= lastCol; col++) {
+    for (let row = firstRow; row <= lastRow; row++) {
+      origins.push([col * chunkSize, row * chunkSize]);
+    }
+  }
+  const distance = ([x, y]: Point) =>
+    (x + chunkSize / 2 - JUNCTION.x) ** 2 + (y + chunkSize / 2 - JUNCTION.y) ** 2;
+  return origins.sort((a, b) => distance(a) - distance(b));
+}
+
+let orderedChunks: Point[] | undefined;
+export function* startingPositions() {
+  yield* spawns;
+  orderedChunks ??= startingChunks();
+  for (const [left, top] of orderedChunks) {
+    const chunk = mapChunk(left, top);
+    if (!chunk) continue;
+    for (const road of chunk.roads) {
+      if (road.layer !== 0 || !['yes', 'permissive', 'designated'].includes(road.access)) continue;
+      const offset = Math.max(0, road.width / 2 - 6);
+      const direction = road.oneway === -1 ? -1 : 1;
+      for (let i = 1; i < road.points.length; i++) {
+        const s = segment(road.points[i - 1], road.points[i]);
+        const angle = Math.atan2(s.dy * direction, s.dx * direction);
+        // Allow room for a van at each end and between neighbouring cars.
+        for (let d = 16; d <= s.length - 16; d += 32) {
+          const x = s.a[0] + d * s.dx + direction * s.dy * offset;
+          const y = s.a[1] + d * s.dy - direction * s.dx * offset;
+          if (x >= left && x < left + chunkSize && y >= top && y < top + chunkSize) {
+            yield [x, y, angle];
+          }
+        }
+      }
+    }
+  }
+}
 
 export const crosswalks = crossings.map(({ centre: [x, y], signal, walk }) => {
   const d = circuit.nearest(x, y),

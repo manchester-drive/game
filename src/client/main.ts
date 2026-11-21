@@ -274,7 +274,8 @@ subscribeToRoom(
     if (frames.length > 6) frames.shift();
     const player = state.players.find((p) => p.id === session?.id);
     if (player) predicted = { ...player };
-    el('count').textContent = state.players.length + ' / 8 players';
+    const count = state.players.length;
+    el('count').textContent = count === 1 ? '1 player' : count + ' players';
     updateUI();
   },
   chat.receive,

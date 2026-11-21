@@ -16,7 +16,8 @@ export function createGameServer({
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   function broadcast(frame: Uint8Array) {
     for (const stream of streams) {
-      if ((stream.desiredSize ?? 0) < frame.length) {
+      // A single large snapshot can exceed the queue budget even for a caught-up client.
+      if ((stream.desiredSize ?? 0) <= 0) {
         streams.delete(stream);
         stream.error(new Error('Client fell behind.'));
       } else stream.enqueue(frame);

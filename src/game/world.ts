@@ -9,7 +9,7 @@ import {
   crosswalks,
   faradayMerge,
   gridDistance,
-  spawns,
+  startingPositions,
   streetObjects,
 } from './streets';
 import {
@@ -120,6 +120,9 @@ function indexChunk(chunk: MapChunk) {
   }
   return { solids, banks, water };
 }
+function insidePolygon(x: number, y: number, rings: Point[][]) {
+  return pointInRing(x, y, rings[0]) && !rings.some((ring, i) => i > 0 && pointInRing(x, y, ring));
+}
 function wallContact(body: Box, vehicle = false) {
   const chunk = mapChunk(body.x, body.y);
   // Hold predicted vehicles at a chunk seam until its collision geometry arrives.
@@ -146,11 +149,7 @@ function wallContact(body: Box, vehicle = false) {
   if (vehicle && walls) {
     for (const { rings, minX, minY, maxX, maxY } of walls.water) {
       if (body.x < minX || body.x > maxX || body.y < minY || body.y > maxY) continue;
-      if (
-        !pointInRing(body.x, body.y, rings[0]) ||
-        rings.some((ring, i) => i > 0 && pointInRing(body.x, body.y, ring))
-      )
-        continue;
+      if (!insidePolygon(body.x, body.y, rings)) continue;
       const bank = closestBoundaryPoint(body.x, body.y, rings);
       const dx = body.x - bank.x,
         dy = body.y - bank.y,
@@ -427,7 +426,7 @@ export function placePlayer(
 ): Player | null {
   const { vehicles, people } = roadUsers(world);
   const style = appearance(options);
-  for (const [x, y, angle] of spawns) {
+  for (const [x, y, angle] of startingPositions()) {
     const v: Player = {
       id,
       name,
@@ -440,7 +439,10 @@ export function placePlayer(
       speed: 0,
       rearLights: 'tail',
     };
-    if (!vehicleObstacle(v, vehicles, people)) return v;
+    if (vehicleObstacle(v, vehicles, people)) continue;
+    // A road can pass through a building. Edge contacts alone miss a car fully inside it.
+    const buildings = mapChunk(x, y)?.buildings;
+    if (buildings && !buildings.some(({ rings }) => insidePolygon(x, y, rings))) return v;
   }
   return null;
 }
