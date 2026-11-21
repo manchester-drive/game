@@ -12,6 +12,7 @@ export const startAreas = {
   oldTrafford: { name: 'Old Trafford', x: -14406, y: 12521 },
   chorlton: { name: 'Chorlton', x: -10597, y: 24208 },
   didsbury: { name: 'Didsbury', x: 4636, y: 38120 },
+  ashtonUnderLyne: { name: 'Ashton-under-Lyne', x: 48451, y: -582 },
 } satisfies Record<string, Position & { name: string }>;
 export type StartArea = keyof typeof startAreas;
 
