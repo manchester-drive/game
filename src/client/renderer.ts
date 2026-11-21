@@ -683,7 +683,7 @@ export function makeRenderer(canvas: HTMLCanvasElement) {
     }
     for (const v of world.players) {
       if (!visible(v)) continue;
-      const str = v.id === me ? 'YOU' : v.name;
+      const str = v.id === me ? 'YOU' : v.guest ? v.name + ' · guest' : v.name;
       b.font = 'bold 7px monospace';
       const lw = Math.ceil(b.measureText(str).width) + 6;
       rect(b, v.x - lw / 2, v.y - 20, lw, 10, '#283730');

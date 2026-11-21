@@ -100,7 +100,14 @@ export function setupChat(releaseControls: () => void) {
       name = document.createElement('strong');
     name.style.color = message.color;
     name.textContent = message.name;
-    line.append(name, ' ', message.text);
+    line.append(name, ' ');
+    if (message.guest) {
+      const tag = document.createElement('small');
+      tag.className = 'guest-tag';
+      tag.textContent = 'guest';
+      line.append(tag);
+    }
+    line.append(message.text);
     log.append(line);
   }
 

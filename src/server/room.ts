@@ -11,6 +11,7 @@ import type { Credentials, DoorCommand, InputCommand, RaceCommand } from '../pro
 export interface RoomSession {
   readonly token: string;
   readonly player: Player;
+  readonly userId?: string;
   lastInputAt: number;
   sequence: number;
 }
@@ -36,6 +37,7 @@ export class GameRoom {
     name: string,
     options: GarageOptions = {},
     positions?: Iterable<number[]>,
+    userId?: string,
   ): Credentials | { error: string } {
     const id = crypto.randomUUID();
     const usage = new Map<string, number>();
@@ -52,9 +54,14 @@ export class GameRoom {
       positions,
     );
     if (!player) return { error: 'Could not find a clear starting position. Try again shortly.' };
+    if (userId) {
+      // An account drives one car at a time. A second tab or a rejoin replaces the first.
+      for (const session of this.sessions.values())
+        if (session.userId === userId) this.leave(session);
+    } else player.guest = true;
 
     const token = crypto.randomUUID();
-    this.sessions.set(token, { token, player, lastInputAt: this.now(), sequence: -1 });
+    this.sessions.set(token, { token, player, userId, lastInputAt: this.now(), sequence: -1 });
     this.world.players.push(player);
     return { id, token };
   }
@@ -91,8 +98,9 @@ export class GameRoom {
   }
 
   chat(session: RoomSession, text: string): ChatMessage {
-    const { name, color } = session.player;
-    const message = { id: crypto.randomUUID(), name, color, text };
+    const { name, color, guest } = session.player;
+    const message: ChatMessage = { id: crypto.randomUUID(), name, color, text };
+    if (guest) message.guest = true;
     this.chatHistory.push(message);
     if (this.chatHistory.length > chatHistoryLimit) this.chatHistory.shift();
     return message;

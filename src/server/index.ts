@@ -12,6 +12,7 @@ import { encodeChat, encodeHello, restartEvent, snapshotPath } from '../protocol
 import { GameRoom } from './room';
 import { createRoutes } from './routes';
 import { openDatabase } from './db';
+import { Accounts } from './accounts';
 
 export function createGameServer({
   hostname = Bun.env.HOST || '127.0.0.1',
@@ -101,6 +102,7 @@ export function createGameServer({
     },
     fetch: createRoutes(
       room,
+      new Accounts(database),
       (event, sender) => {
         const frame = encodeChat(event);
         broadcast(({ token }) => {

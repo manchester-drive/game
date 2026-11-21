@@ -11,6 +11,7 @@ export function withinEarshot(a: Position, b: Position) {
 export interface ChatMessage {
   id: string;
   name: string;
+  guest?: boolean;
   color: string;
   text: string;
 }

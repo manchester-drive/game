@@ -838,3 +838,65 @@ kbd {
   clip-path: polygon(100% 50%, 0 0, 22% 50%, 0 100%);
   transform: rotate(var(--heading));
 }
+
+.account-bar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+#account-status strong {
+  color: var(--paper);
+}
+button.link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--yellow);
+  font-weight: 650;
+  text-decoration: underline;
+}
+button.secondary {
+  background: none;
+  color: var(--paper);
+  border-color: #69746b;
+}
+#account-dialog {
+  width: min(340px, calc(100% - 32px));
+  padding: 18px 20px;
+  border: 0;
+  border-top: 3px solid var(--yellow);
+  background: var(--ink);
+  color: var(--paper);
+}
+#account-dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+#account-form label input {
+  display: block;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+.account-hint {
+  margin: 4px 0 12px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+#account-error {
+  margin: 4px 0 8px;
+  color: #f0a08f;
+  font-size: 0.84rem;
+}
+.guest-tag {
+  margin-right: 4px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}

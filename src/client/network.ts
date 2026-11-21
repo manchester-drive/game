@@ -1,6 +1,6 @@
 import type { ChatEvent } from '../protocol/chat';
 import type { Snapshot } from '../protocol/snapshots';
-import type { Commands, Credentials } from '../protocol/commands';
+import type { AccountProfile, Commands, Credentials } from '../protocol/commands';
 import { areaKey } from '../protocol/view';
 import type { CellBounds } from '../game/spatial';
 import { decodeSnapshot, snapshotPath } from '../protocol/snapshots';
@@ -8,18 +8,23 @@ import { decodeSnapshot, snapshotPath } from '../protocol/snapshots';
 type Reply<T> =
   | { ok: true; status: number; data: T }
   | { ok: false; status: number; error: string };
+type Responses<P> = P extends '/join'
+  ? Credentials
+  : P extends '/account/signup' | '/account/login'
+    ? AccountProfile
+    : object;
 export async function post<P extends keyof Commands>(
   path: P,
   data: Commands[P],
-): Promise<Reply<P extends '/join' ? Credentials : object>> {
+): Promise<Reply<Responses<P>>> {
   const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!response.ok) {
-    const body = (await response.json()) as { error: string };
-    return { ok: false, status: response.status, error: body.error };
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, status: response.status, error: body.error ?? 'Request failed.' };
   }
   return { ok: true, status: response.status, data: await response.json() };
 }

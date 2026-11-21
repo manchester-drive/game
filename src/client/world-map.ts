@@ -92,7 +92,7 @@ export function setupWorldMap(releaseControls: () => void) {
   const releasePointers = bindMapGestures(plot, changeView);
 
   function describe(p: VisiblePlayer) {
-    return p.name + (p.id === localId ? ' (you)' : '') + (p.parkedCarId ? ' · on foot' : ' · driving');
+    return p.name + (p.guest ? ' (guest)' : '') + (p.id === localId ? ' (you)' : '') + (p.parkedCarId ? ' · on foot' : ' · driving');
   }
 
   function draw() {

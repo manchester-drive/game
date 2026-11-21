@@ -7,6 +7,7 @@ import { cameraCells } from '../protocol/view';
 import { streetAt } from '../game/streets';
 import { createWorld, drive, walk, JUNCTION } from '../game/world';
 import type { Commands, Credentials } from '../protocol/commands';
+import { setupAccount } from './account';
 import { setupChat } from './chat';
 import { el, notice, outfit, setupGarage, updateHud } from './hud';
 import { leaveOnPageHide, post, subscribeToRoom } from './network';
@@ -45,6 +46,7 @@ let doorBusy = false,
   raceBusy = false,
   dismissedRace: string | undefined;
 setupGarage();
+setupAccount(() => updateUI());
 // The driver's details survive a reload so a deploy can put them back in a car.
 const driverKey = 'manchester-drive:driver';
 function savedDriver(): Commands['/join'] | null {

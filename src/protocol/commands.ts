@@ -40,7 +40,17 @@ export type DoorCommand = z.output<typeof doorCommand>;
 export type RaceCommand = z.output<typeof raceCommandBody>;
 
 type Token = Pick<Credentials, 'token'>;
+export interface AccountCredentials {
+  username: string;
+  password: string;
+}
+export interface AccountProfile {
+  username: string;
+}
 export interface Commands {
+  '/account/signup': AccountCredentials;
+  '/account/login': AccountCredentials;
+  '/account/logout': Record<string, never>;
   '/view': z.input<typeof viewCommand>;
   '/join': Appearance & { name: string };
   '/leave': Token;

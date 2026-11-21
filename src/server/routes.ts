@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import type { Context } from 'hono';
 import { z } from 'zod';
 import type { LiveChatEvent } from '../protocol/chat';
 import type { Player } from '../game/game-types';
@@ -11,16 +13,43 @@ import {
   viewCommand,
 } from '../protocol/commands';
 import type { GameRoom, RoomSession } from './room';
+import {
+  credentialsBody,
+  LoginLimiter,
+  sessionDays,
+  type Accounts,
+  type User,
+} from './accounts';
 
 type Variables = { body: Record<string, unknown>; session: RoomSession };
+type Env = { Variables: Variables; Bindings: { requestIP?(req: Request): { address: string } | null } };
 const commandBody = z.record(z.string(), z.unknown());
+export const accountCookie = 'md_account';
+
+function clientIP(c: Context<Env>) {
+  // Fly's proxy sets this header. Direct connections fall back to the socket address.
+  return c.req.header('Fly-Client-IP') ?? c.env?.requestIP?.(c.req.raw)?.address ?? 'unknown';
+}
+
+// Browsers keep Secure cookies over HTTPS and on loopback, so only plain-HTTP LAN rooms skip it.
+function secureRequest(c: Context<Env>) {
+  const url = new URL(c.req.url);
+  const proto = c.req.header('X-Forwarded-Proto') ?? url.protocol.slice(0, -1);
+  return proto === 'https' || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+}
+
+function publicUser(user: User) {
+  return { username: user.username };
+}
 
 export function createRoutes(
   room: GameRoom,
+  accounts: Accounts,
   publishChat: (event: LiveChatEvent, sender: Player) => void,
   updateView: (view: z.output<typeof viewCommand>) => boolean,
 ) {
-  const api = new Hono<{ Variables: Variables }>();
+  const api = new Hono<Env>();
+  const limiter = new LoginLimiter();
   api.use(async (c, next) => {
     c.header('Cache-Control', 'no-store');
     await next();
@@ -28,7 +57,7 @@ export function createRoutes(
   const authenticatedCommands = ['/input', '/leave', '/race', '/vehicle', '/chat'];
   api.on(
     'POST',
-    ['/join', '/view', ...authenticatedCommands],
+    ['/join', '/view', '/account/signup', '/account/login', '/account/logout', ...authenticatedCommands],
     bodyLimit({ maxSize: 2048, onError: (c) => c.json({ error: 'Request too large.' }, 413) }),
     async (c, next) => {
       const origin = c.req.header('Origin');
@@ -47,9 +76,61 @@ export function createRoutes(
     if (!view.success) return c.json({ error: 'Invalid camera area.' }, 400);
     return updateView(view.data) ? c.json({}) : c.json({ error: 'View disconnected.' }, 404);
   });
+  function signedIn(c: Context<Env>) {
+    return accounts.userForToken(getCookie(c, accountCookie));
+  }
+  function startSession(c: Context<Env>, token: string) {
+    setCookie(c, accountCookie, token, {
+      path: '/',
+      httpOnly: true,
+      secure: secureRequest(c),
+      sameSite: 'Lax',
+      maxAge: sessionDays * 24 * 60 * 60,
+    });
+  }
+  api.post('/account/signup', async (c) => {
+    const body = credentialsBody.safeParse(c.var.body);
+    if (!body.success) return c.json({ error: body.error.issues[0].message }, 400);
+    const result = await accounts.signup(body.data);
+    if ('error' in result) return c.json(result, 409);
+    startSession(c, result.token);
+    return c.json(publicUser(result.user), 201);
+  });
+  api.post('/account/login', async (c) => {
+    const body = credentialsBody.safeParse(c.var.body);
+    const ip = clientIP(c);
+    const username = typeof c.var.body.username === 'string' ? c.var.body.username.trim() : '';
+    if (limiter.blocked(ip, username))
+      return c.json({ error: 'Too many failed logins. Try again later.' }, 429);
+    const result = body.success ? await accounts.login(body.data) : null;
+    if (!result) {
+      limiter.fail(ip, username);
+      return c.json({ error: 'Wrong username or password.' }, 401);
+    }
+    startSession(c, result.token);
+    return c.json(publicUser(result.user));
+  });
+  api.post('/account/logout', (c) => {
+    const token = getCookie(c, accountCookie);
+    if (token) accounts.logout(token);
+    deleteCookie(c, accountCookie, { path: '/', secure: secureRequest(c) });
+    return c.json({});
+  });
+  api.get('/account/me', (c) => {
+    const user = signedIn(c);
+    return user ? c.json(publicUser(user)) : c.json({ error: 'Not signed in.' }, 401);
+  });
   api.post('/join', (c) => {
     const body = c.var.body;
-    const result = room.join(typeof body.name === 'string' ? body.name : '', body);
+    const user = signedIn(c);
+    if (user) {
+      const result = room.join(user.username, body, undefined, user.id);
+      return 'error' in result ? c.json(result, 409) : c.json(result, 201);
+    }
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 16) : '';
+    if (name && accounts.usernameTaken(name))
+      return c.json({ error: 'That name belongs to a registered player. Log in or pick another.' }, 409);
+    const result = room.join(name, body);
     return 'error' in result ? c.json(result, 409) : c.json(result, 201);
   });
   api.on('POST', authenticatedCommands, async (c, next) => {

@@ -270,6 +270,7 @@ test('global chat authenticates the sender, reaches both clients and restores hi
   expect(a.message).toEqual({
     id: expect.any(String),
     name: 'Ada',
+    guest: true,
     color: expect.any(String),
     text,
   });

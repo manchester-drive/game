@@ -24,6 +24,8 @@ export interface TrafficCar extends Vehicle {
 }
 export interface Player extends Vehicle, Appearance {
   name: string;
+  // Guests have no account, so their names are not reserved.
+  guest?: boolean;
   model: Appearance['model'];
   parkedCar: Vehicle | null;
 }
