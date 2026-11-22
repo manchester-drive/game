@@ -66,6 +66,42 @@ The container starts as root only to give the volume to the unprivileged user, t
 
 Fly.io deploys are rolling, because the data volume attaches to one machine at a time. Fly sends the running server `SIGTERM`, then starts the new image on the same machine and waits for `/healthz`. The old server tells its viewers it is restarting, then closes their streams. The game is unavailable for a few seconds. Browsers keep retrying every second and reconnect once the new server is up. A browser that reaches a new build reloads the page. Drivers join again automatically, using the name, look and car kept in session storage. Accounts and their saved choices persist in SQLite. Positions, races and chat history do not carry over, because the room exists only in memory.
 
+### Staging on Fly.io
+
+Production uses `fly deploy` with `fly.toml`. The Alchemy staging stack has its own Fly app and SQLite volume in London. [Staging stack](infra/alchemy.run.ts)
+
+From the repository root, create the staging app once in your Fly organization. Fly needs the app before it can accept an image into its registry.
+
+```fish
+fly apps create tombell-manchester-drive-stage --org YOUR_FLY_ORG
+```
+
+Build and push the image from the repository root. Fly's remote builder uses the existing Dockerfile and prints the image reference on the `image:` line.
+
+```fish
+fly deploy --app tombell-manchester-drive-stage --build-only --push --remote-only
+```
+
+Install the staging dependencies and configure Alchemy with a Fly organization token for the same organization. [Fly token setup](https://alchemy.run/fly/setup/)
+
+```fish
+cd infra
+bun install --frozen-lockfile
+bun alchemy profile edit --add Fly
+```
+
+Set `FLY_STAGING_IMAGE` to the full image reference from the build. Both deployment tags and SHA-256 digests work. On the first deployment, use `--adopt` to bring the bootstrapped App into the stack.
+
+```fish
+set -lx FLY_STAGING_IMAGE registry.fly.io/tombell-manchester-drive-stage:deployment-REPLACE_ME
+bun alchemy plan --stage staging --adopt
+bun alchemy deploy --stage staging --adopt
+```
+
+For later deploys, build a new image, update `FLY_STAGING_IMAGE` and run the same plan and deploy commands without `--adopt`. Keep `infra/.alchemy/` between deploys so Alchemy can track the Machine and disk. Destroying the stack also deletes the staging volume.
+
+After the first deploy, check `/healthz` at the URL Alchemy prints, create a test account and join the same room from two browsers. Deploy a new image and check that the Machine and volume IDs are unchanged, the test account still works and both browsers reconnect.
+
 ## Verify
 
 ```fish
